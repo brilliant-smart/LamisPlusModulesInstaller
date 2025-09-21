@@ -1,0 +1,20 @@
+﻿################################################################################
+# This .gitignore file was automatically created by Microsoft(R) Visual Studio.
+################################################################################
+
+
+# Visual Studio temp data
+/.vs
+
+# Build and output folders
+bin/
+obj/
+
+# User-specific files
+*.user
+*.suo
+*.userosscache
+
+# Other unnecessary system files
+*.log
+*.tmp
