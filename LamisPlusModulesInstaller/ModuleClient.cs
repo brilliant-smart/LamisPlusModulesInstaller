@@ -19,8 +19,7 @@ namespace LamisPlusModulesInstaller
                 new AuthenticationHeaderValue("Bearer", jwtToken);
         }
 
-        //module upload
-        public async Task<string> UploadModuleAsync(string filePath)
+        public async Task<ModuleUploadResponse> UploadModuleAsync(string filePath)
         {
             using var form = new MultipartFormDataContent();
             using var fs = File.OpenRead(filePath);
@@ -38,38 +37,46 @@ namespace LamisPlusModulesInstaller
             }
 
             Console.WriteLine($"[UPLOAD OK] {filePath}");
-            Console.WriteLine($"[UPLOAD RESPONSE] {body}"); // 👈 ADD THIS
-            return body;
+            Console.WriteLine($"[UPLOAD RESPONSE] {body}");
 
+            return JsonSerializer.Deserialize<ModuleUploadResponse>(body,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
         }
 
-        //module install
-        public async Task InstallModuleAsync(string uploadResponseJson)
+        public async Task<ModuleInstallResponse?> InstallModuleAsync(ModuleUploadResponse uploaded)
         {
-            using var doc = JsonDocument.Parse(uploadResponseJson);
-            var moduleElement = doc.RootElement;
+            var url = "/api/v1/modules/install?install=true";
 
+            // Construct minimal payload matching swagger model
             var payload = new
             {
-                install = true,
-                module = moduleElement
+                active = uploaded.Active,
+                artifact = uploaded.Artifact,
+                basePackage = uploaded.BasePackage,
+                description = uploaded.Description,
+                name = uploaded.Name,
+                version = uploaded.Version,
+                newModule = uploaded.New,   // note: "new" is a keyword in C#
+                installOnBoot = false,
+                priority = uploaded.Priority
             };
 
             var json = JsonSerializer.Serialize(payload);
-            var content = new StringContent(uploadResponseJson, Encoding.UTF8, "application/json");
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-            var response = await _http.PostAsync("/api/v1/modules/install?install=true", content);
-            var body = await response.Content.ReadAsStringAsync();
+            var resp = await _http.PostAsync(url, content);
+            var body = await resp.Content.ReadAsStringAsync();
 
-            if (!response.IsSuccessStatusCode)
+            if (!resp.IsSuccessStatusCode)
             {
-                Console.WriteLine($"[INSTALL ERROR] {response.StatusCode}: {body}");
-                response.EnsureSuccessStatusCode();
+                Console.WriteLine($"[INSTALL ERROR] {resp.StatusCode}: {body}");
+                return null;
             }
 
             Console.WriteLine($"[INSTALL OK] {body}");
-
+            return JsonSerializer.Deserialize<ModuleInstallResponse>(body);
         }
+
 
 
     }
