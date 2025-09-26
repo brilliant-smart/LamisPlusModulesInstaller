@@ -179,7 +179,7 @@ namespace LamisPlusModulesInstaller
                 }
             }
 
-            Console.WriteLine("=== All modules insalled successfully ===");
+            Console.WriteLine("=== All modules installed successfully ===");
         }
     }
 }
