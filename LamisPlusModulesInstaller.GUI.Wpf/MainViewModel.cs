@@ -20,6 +20,31 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
 
         public ObservableCollection<ModuleViewModel> Modules { get; } = new();
 
+        // Dependency map to enforce installation in dependency aware order
+        private readonly Dictionary<string, string[]> dependencies =
+            new(StringComparer.OrdinalIgnoreCase)
+            {
+                { "Patient", Array.Empty<string>() },
+                { "Triage", new []{ "Patient" } },
+                { "Laboratory", new []{ "Patient" } },
+                { "Biometric", new []{ "Patient" } },
+                { "HIV", new []{ "Patient", "Triage", "Laboratory", "Biometric" } },
+                { "HTS", new []{ "Patient" } },
+                { "Prep", new []{ "HIV" } },
+                { "PMTCT", new []{ "HIV" } },
+                { "ADR", Array.Empty<string>() },
+                { "Hepatitis", new []{ "Patient" } },
+                { "Report", new []{ "HIV" } },
+                { "NDR", new []{ "Patient", "Triage", "Laboratory", "HIV" } },
+                { "Lims", new []{ "Patient", "Laboratory" } },
+                { "Casemanager", new []{ "Patient" } },
+                { "Immunization", new []{ "Patient" } },
+                { "MHPSS", new []{ "Patient" } },
+                { "KP_Prev", Array.Empty<string>() },
+                { "Backup", Array.Empty<string>() },
+                { "Client-sync", Array.Empty<string>() }
+            };
+
         public MainViewModel()
         {
             _client = new ModuleClient(BaseUrl, "");
@@ -121,13 +146,41 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
         [RelayCommand]
         private async Task InstallAllAsync()
         {
-            foreach (var module in Modules)
+            var installed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var kvp in dependencies)
             {
+                string moduleKey = kvp.Key;
+                string[] deps = kvp.Value;
+
+                // Check dependencies are satisfied
+                if (!deps.All(d => installed.Contains(d)))
+                {
+                    AppendLog($"⏩ Skipping {moduleKey}, dependencies not satisfied: {string.Join(", ", deps)}");
+                    continue;
+                }
+
+                // Match the module in our Modules collection
+                var module = Modules.FirstOrDefault(m =>
+                    m.Name.Contains(moduleKey, StringComparison.OrdinalIgnoreCase));
+
+                if (module == null)
+                {
+                    AppendLog($"❌ No local JAR found for {moduleKey}");
+                    continue;
+                }
+
                 await InstallModuleAsync(module);
+
+                if (module.Status.Equals("SUCCESS", StringComparison.OrdinalIgnoreCase))
+                {
+                    installed.Add(moduleKey);
+                }
             }
 
             await RefreshInstalledVersionsAsync();
         }
+
 
         [RelayCommand]
         private async Task InstallSelectedAsync()
