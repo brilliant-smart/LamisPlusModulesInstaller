@@ -1,0 +1,52 @@
+﻿<Window x:Class="LamisPlusModulesInstaller.GUI.Wpf.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="LamisPlus Module Installer" Height="600" Width="1000">
+    <DockPanel>
+
+        <!-- 🔑 Auth Controls -->
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="10">
+            <TextBox Width="200" 
+                     Text="{Binding BaseUrl, UpdateSourceTrigger=PropertyChanged}" 
+                     Margin="5,0"/>
+            <TextBox Width="150" Margin="5" 
+                     Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}" />
+
+            <!-- Pass the whole PasswordBox into the command -->
+            <PasswordBox Width="150" Margin="5" x:Name="PasswordBox" />
+            <Button Content="Login" Width="100" Margin="5"
+                    Command="{Binding LoginCommand}"
+                    CommandParameter="{Binding ElementName=PasswordBox}" />
+
+            <TextBlock Text="{Binding AuthStatus}" Margin="10,0,0,0" 
+                       VerticalAlignment="Center" />
+        </StackPanel>
+
+        <!-- 📋 Module Grid -->
+        <DataGrid ItemsSource="{Binding Modules}" AutoGenerateColumns="False" 
+                  DockPanel.Dock="Top" Margin="10" Height="300">
+            <DataGrid.Columns>
+                <DataGridCheckBoxColumn Header="Select" Binding="{Binding IsSelected}" Width="50"/>
+                <DataGridTextColumn Header="Module Name" Binding="{Binding Name}" Width="200"/>
+                <DataGridTextColumn Header="Local Version" Binding="{Binding LocalVersion}" Width="120"/>
+                <DataGridTextColumn Header="Installed Version" Binding="{Binding InstalledVersion}" Width="120"/>
+                <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="200"/>
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <!-- 🎛 Action Buttons -->
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="10">
+            <Button Content="Install All" Width="120" Margin="5" 
+                    Command="{Binding InstallAllCommand}" />
+            <Button Content="Install Selected" Width="120" Margin="5" 
+                    Command="{Binding InstallSelectedCommand}" />
+            <Button Content="Retry Failed" Width="120" Margin="5" 
+                    Command="{Binding RetryFailedCommand}" />
+        </StackPanel>
+
+        <!-- 📜 Logs -->
+        <TextBox DockPanel.Dock="Bottom" Margin="10" Height="200" 
+                 Text="{Binding Logs}" IsReadOnly="True" 
+                 VerticalScrollBarVisibility="Auto" TextWrapping="Wrap"/>
+    </DockPanel>
+</Window>
