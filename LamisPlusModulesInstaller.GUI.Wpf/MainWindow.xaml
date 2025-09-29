@@ -24,7 +24,32 @@
 
         <!-- 📋 Module Grid -->
         <DataGrid ItemsSource="{Binding Modules}" AutoGenerateColumns="False" 
-                  DockPanel.Dock="Top" Margin="10" Height="300">
+                  DockPanel.Dock="Top" Margin="10" Height="300"
+                  IsReadOnly="True">
+            <DataGrid.RowStyle>
+                <Style TargetType="DataGridRow">
+                    <Style.Triggers>
+                        <!-- Green for SUCCESS -->
+                        <DataTrigger Binding="{Binding Status}" Value="SUCCESS">
+                            <Setter Property="Background" Value="LightGreen"/>
+                        </DataTrigger>
+
+                        <!-- Red for Failed and ERROR -->
+                        <DataTrigger Binding="{Binding Status}" Value="Failed">
+                            <Setter Property="Background" Value="Salmon"/>
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding Status}" Value="ERROR">
+                            <Setter Property="Background" Value="Salmon"/>
+                        </DataTrigger>
+
+                        <!-- Yellow for Pending -->
+                        <DataTrigger Binding="{Binding Status}" Value="Pending">
+                            <Setter Property="Background" Value="Khaki"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </DataGrid.RowStyle>
+
             <DataGrid.Columns>
                 <DataGridCheckBoxColumn Header="Select" Binding="{Binding IsSelected}" Width="50"/>
                 <DataGridTextColumn Header="Module Name" Binding="{Binding Name}" Width="200"/>
