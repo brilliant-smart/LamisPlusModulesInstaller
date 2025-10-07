@@ -13,7 +13,7 @@ namespace LamisPlusModulesInstaller
         {
             string baseUrl = "http://localhost:8383";
             string username = "guest@lamisplus.org";
-            string password = "123456"; //some facilities are using 1 - 5, TODO: lamisplus username and password will be asked in the gui version
+            string password = "12345"; //some facilities are using 1 - 5, TODO: lamisplus username and password will be asked in the gui version
             string moduleFolder = @"C:\lamismodules";// todo: after installing the .exe, it will create this directory in the c drive
 
             var auth = new AuthHelper(baseUrl); //added auth helper for separation of concern

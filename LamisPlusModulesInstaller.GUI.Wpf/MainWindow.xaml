@@ -22,6 +22,27 @@
                        VerticalAlignment="Center" />
         </StackPanel>
 
+        <!-- 📂 Modules Folder Selector (new) -->
+        <GroupBox Header="Use this section if you want to change the default modules folder" DockPanel.Dock="Top" Margin="10">
+            <StackPanel Orientation="Horizontal" Margin="10">
+
+                <!-- TextBox to show current folder -->
+                <TextBox Width="400"
+                         Text="{Binding ModulesFolder, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                         IsReadOnly="True"
+                         VerticalAlignment="Center"
+                         Margin="0,0,10,0" />
+
+                <!-- Browse button -->
+                <Button Content="📂 Select Modules Folder"
+                        Width="150"
+                        Command="{Binding BrowseModulesFolderCommand}"
+                        IsEnabled="{Binding IsAuthenticated}" />
+
+            </StackPanel>
+        </GroupBox>
+
+
         <!-- 📋 Module Grid -->
         <DataGrid ItemsSource="{Binding Modules}" AutoGenerateColumns="False" 
                   DockPanel.Dock="Top" Margin="10" Height="300"
@@ -34,7 +55,7 @@
                             <Setter Property="Background" Value="LightGreen"/>
                         </DataTrigger>
 
-                        <!-- Red for Failed and ERROR -->
+                        <!-- Red for Failed / ERROR -->
                         <DataTrigger Binding="{Binding Status}" Value="Failed">
                             <Setter Property="Background" Value="Salmon"/>
                         </DataTrigger>
@@ -46,9 +67,15 @@
                         <DataTrigger Binding="{Binding Status}" Value="Pending">
                             <Setter Property="Background" Value="Khaki"/>
                         </DataTrigger>
+
+                        <!-- Blue for Installing -->
+                        <DataTrigger Binding="{Binding Status}" Value="Installing">
+                            <Setter Property="Background" Value="LightSkyBlue"/>
+                        </DataTrigger>
                     </Style.Triggers>
                 </Style>
             </DataGrid.RowStyle>
+
 
             <DataGrid.Columns>
                 <DataGridCheckBoxColumn Header="Select" Binding="{Binding IsSelected}" Width="50"/>
@@ -62,15 +89,40 @@
         <!-- 🎛 Action Buttons -->
         <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="10">
             <Button Content="Install All" Width="120" Margin="5" 
-                    Command="{Binding InstallAllCommand}" />
+                    Command="{Binding InstallAllCommand}"
+                    IsEnabled="{Binding IsAuthenticated}" />
+
             <Button Content="Install Selected" Width="120" Margin="5" 
-                    Command="{Binding InstallSelectedCommand}" />
+                    Command="{Binding InstallSelectedCommand}"
+                    IsEnabled="{Binding IsAuthenticated}" />
+
             <Button Content="Retry Failed" Width="120" Margin="5" 
-                    Command="{Binding RetryFailedCommand}" />
+                    Command="{Binding RetryFailedCommand}"
+                    IsEnabled="{Binding IsAuthenticated}" />
+
+            <!-- 🧹 Clear Logs -->
+            <Button Content="Clear Logs" Width="120" Margin="5"
+                    Command="{Binding ClearLogsCommand}" />
         </StackPanel>
 
+
+        <!-- 📊 Progress Indicator -->
+        <StackPanel DockPanel.Dock="Bottom" Margin="10">
+            <TextBlock Text="{Binding ProgressText}" 
+                       HorizontalAlignment="Center"
+                       FontWeight="Bold"
+                       Margin="0,0,0,5"/>
+            <ProgressBar Height="20" 
+                         Minimum="0" 
+                         Maximum="100"
+                         Value="{Binding InstallProgress}" 
+                         Visibility="{Binding IsInstalling, Converter={StaticResource BoolToVisibilityConverter}}"/>
+        </StackPanel>
+
+
         <!-- 📜 Logs -->
-        <TextBox DockPanel.Dock="Bottom" Margin="10" Height="200" 
+        <TextBox x:Name="LogsTextBox"
+                 DockPanel.Dock="Bottom" Margin="10" Height="200" 
                  Text="{Binding Logs}" IsReadOnly="True" 
                  VerticalScrollBarVisibility="Auto" TextWrapping="Wrap"/>
     </DockPanel>

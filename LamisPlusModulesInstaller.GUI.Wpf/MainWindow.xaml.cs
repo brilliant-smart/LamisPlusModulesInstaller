@@ -20,6 +20,11 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
         {
             InitializeComponent();
             DataContext = new MainViewModel();
+
+            LogsTextBox.TextChanged += (s, e) =>
+            {
+                LogsTextBox.ScrollToEnd();
+            };
         }
     }
 }

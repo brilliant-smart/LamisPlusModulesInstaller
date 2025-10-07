@@ -1,10 +1,14 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+﻿using WinForms = System.Windows.Forms;
+using WpfApp = System.Windows;
+using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using System.Collections.ObjectModel;
 using System.Threading.Tasks;
 using System;
 using System.IO;
 using System.Linq;
+
+
 
 namespace LamisPlusModulesInstaller.GUI.Wpf
 {
@@ -17,6 +21,15 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
         [ObservableProperty] private string password;
         [ObservableProperty] private string authStatus = "Not logged in";
         [ObservableProperty] private string logs = "";
+        [ObservableProperty] private bool isAuthenticated = false;
+        [ObservableProperty] private bool isInstalling = false;
+        [ObservableProperty] private string modulesFolder = @"C:\lamismodules";
+        //progress bar
+        [ObservableProperty] private int totalModules = 0;
+        [ObservableProperty] private int completedModules = 0;
+        [ObservableProperty] private int installProgress = 0;
+        [ObservableProperty] private string progressText = "";
+
 
         public ObservableCollection<ModuleViewModel> Modules { get; } = new();
 
@@ -45,24 +58,75 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
                 { "Client-sync", Array.Empty<string>() }
             };
 
+        //constructor updated to warn the user if the default folder does not exist
         public MainViewModel()
         {
             _client = new ModuleClient(BaseUrl, "");
 
-            // 🔍 Load local JARs immediately
-            LoadLocalModules();
+            if (!Directory.Exists(ModulesFolder))
+            {
+                var message =
+                    $"The default modules folder 📁 'lamismodules' was not found at:\n\n" +
+                    $"{ModulesFolder}\n\n" +
+                    "Would you like to create it now?\n\n" +
+                    "After the folder is created, please copy all the modules(.jar) files " +
+                    "into it before installing.";
+
+                if (System.Windows.MessageBox.Show(message,
+                        "Modules Folder Missing",
+                        System.Windows.MessageBoxButton.YesNo,
+                        System.Windows.MessageBoxImage.Question)
+                    == System.Windows.MessageBoxResult.Yes)
+                {
+                    Directory.CreateDirectory(ModulesFolder);
+                    AppendLog($"✅ Created modules folder: {ModulesFolder}");
+                    System.Windows.MessageBox.Show(
+                        $"A folder named 'lamismodules' has been created in your Local Disk (C:).\n\n" +
+                        $"📂 Location: {ModulesFolder}\n\n" +
+                        $"Please copy the newly released module files into this folder before proceeding with the installation.\n\n" +
+                        $"Idan baku gane ba, ku kira H.I",
+                        "Folder Created",
+                        System.Windows.MessageBoxButton.OK,
+                        System.Windows.MessageBoxImage.Information
+                    );
+                }
+                else
+                {
+                    AppendLog($"⚠️ Modules folder missing — please use the '📂 Select Modules Folder' button to choose a location.");
+                }
+            }
+            else
+            {
+                LoadLocalModules();
+            }
+
         }
 
+        //Added browse folder to select modules folder
+        [RelayCommand]
+        private void BrowseModulesFolder()
+        {
+            var dialog = new WinForms.FolderBrowserDialog();
+            if (dialog.ShowDialog() == WinForms.DialogResult.OK)
+            {
+                ModulesFolder = dialog.SelectedPath;
+                AppendLog($"📂 Selected modules folder: {ModulesFolder}");
+                LoadLocalModules();
+            }
+        }
+
+
+
+        //Replced hardcoded module folder method
         private void LoadLocalModules()
         {
             try
             {
-                string modulesDir = @"C:\lamismodules";
                 Modules.Clear();
 
-                if (Directory.Exists(modulesDir))
+                if (Directory.Exists(ModulesFolder))
                 {
-                    var moduleFiles = Directory.GetFiles(modulesDir, "*.jar");
+                    var moduleFiles = Directory.GetFiles(ModulesFolder, "*.jar");
                     foreach (var file in moduleFiles)
                     {
                         Modules.Add(new ModuleViewModel
@@ -77,7 +141,7 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
                 }
                 else
                 {
-                    AppendLog($"⚠️ Directory not found: {modulesDir}");
+                    AppendLog($"⚠️ Directory not found: {ModulesFolder}");
                 }
             }
             catch (Exception ex)
@@ -85,6 +149,7 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
                 AppendLog($"⚠️ Error scanning modules: {ex.Message}");
             }
         }
+
 
         [RelayCommand]
         private async Task LoginAsync(System.Windows.Controls.PasswordBox passwordBox)
@@ -97,14 +162,15 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
                 _client = new ModuleClient(BaseUrl, token);
 
                 AuthStatus = "✅ Authenticated";
+                IsAuthenticated = true;   // enable buttons
                 AppendLog("Login successful.");
 
-                // 🔍 After login, sync server-installed modules
                 await RefreshInstalledVersionsAsync();
             }
             catch (Exception ex)
             {
-                AuthStatus = $"❌ Login failed: {ex.Message}";
+                AuthStatus = $"Login failed: {ex.Message}";
+                IsAuthenticated = false;  // keep buttons disabled
                 AppendLog(AuthStatus);
             }
         }
@@ -146,39 +212,77 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
         [RelayCommand]
         private async Task InstallAllAsync()
         {
-            var installed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-            foreach (var kvp in dependencies)
+            IsInstalling = true;
+            try
             {
-                string moduleKey = kvp.Key;
-                string[] deps = kvp.Value;
+                var installed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                //added for progress bar with percentage
+                TotalModules = dependencies.Count;
+                CompletedModules = 0;
 
-                // Check dependencies are satisfied
-                if (!deps.All(d => installed.Contains(d)))
+                foreach (var kvp in dependencies)
                 {
-                    AppendLog($"⏩ Skipping {moduleKey}, dependencies not satisfied: {string.Join(", ", deps)}");
-                    continue;
+                    string moduleKey = kvp.Key;
+                    string[] deps = kvp.Value;
+
+                    // Skip if dependencies not ready
+                    if (!deps.All(d => installed.Contains(d)))
+                    {
+                        AppendLog($"⏩ Skipping {moduleKey}, dependencies not satisfied: {string.Join(", ", deps)}");
+                        CompletedModules++;
+                        UpdateProgress();
+                        continue;
+                    }
+
+                    var module = Modules.FirstOrDefault(m =>
+                        m.Name.Contains(moduleKey, StringComparison.OrdinalIgnoreCase));
+
+                    if (module == null)
+                    {
+                        AppendLog($"❌ No local JAR found for {moduleKey}");
+                        CompletedModules++;
+                        UpdateProgress();
+                        continue;
+                    }
+
+                    await InstallModuleAsync(module);
+
+                    if (module.Status.Equals("SUCCESS", StringComparison.OrdinalIgnoreCase))
+                        installed.Add(moduleKey);
+
+                    CompletedModules++;
+                    UpdateProgress();
                 }
 
-                // Match the module in our Modules collection
-                var module = Modules.FirstOrDefault(m =>
-                    m.Name.Contains(moduleKey, StringComparison.OrdinalIgnoreCase));
+                await RefreshInstalledVersionsAsync();
+            }
+            finally
+            {
+                IsInstalling = false;
+                UpdateProgress(true); // mark complete
+            }
+        }
 
-                if (module == null)
-                {
-                    AppendLog($"❌ No local JAR found for {moduleKey}");
-                    continue;
-                }
-
-                await InstallModuleAsync(module);
-
-                if (module.Status.Equals("SUCCESS", StringComparison.OrdinalIgnoreCase))
-                {
-                    installed.Add(moduleKey);
-                }
+        //Helper method for install asyn method and improved progress bar
+        private void UpdateProgress(bool finished = false)
+        {
+            if (TotalModules == 0)
+            {
+                InstallProgress = 0;
+                ProgressText = "";
+                return;
             }
 
-            await RefreshInstalledVersionsAsync();
+            if (finished)
+            {
+                InstallProgress = 100;
+                ProgressText = $"({CompletedModules}/{TotalModules}) Modules installed successfully";
+            }
+            else
+            {
+                InstallProgress = (int)((double)CompletedModules / TotalModules * 100);
+                ProgressText = $"Installing {CompletedModules}/{TotalModules} ({InstallProgress}%)";
+            }
         }
 
 
@@ -206,10 +310,17 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
             await RefreshInstalledVersionsAsync();
         }
 
+        [RelayCommand]
+        private void ClearLogs()
+        {
+            Logs = string.Empty;
+        }
+
         private async Task InstallModuleAsync(ModuleViewModel module)
         {
             try
             {
+                module.Status = "Installing"; //show progress
                 AppendLog($"Installing {module.Name}...");
 
                 var uploadResp = await _client.UploadModuleAsync(module.LocalPath);
@@ -226,10 +337,13 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
             }
         }
 
+
         private void AppendLog(string message)
         {
             Logs += $"{DateTime.Now:HH:mm:ss} {message}\n";
         }
+
+
 
         // 📌 Extracts "2.1.1" from "patient-2.1.1.jar"
         private string ExtractVersionFromFilename(string path)
