@@ -59,47 +59,65 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
             };
 
         //constructor updated to warn the user if the default folder does not exist
+        //A method to ensure that the modules folder exists during runtime is created.
+        //So, modules check control flow are moved into it, and the method is now called inside the constructor
         public MainViewModel()
         {
             _client = new ModuleClient(BaseUrl, "");
 
-            if (!Directory.Exists(ModulesFolder))
-            {
-                var message =
-                    $"The default modules folder 📁 'lamismodules' was not found at:\n\n" +
-                    $"{ModulesFolder}\n\n" +
-                    "Would you like to create it now?\n\n" +
-                    "After the folder is created, please copy all the modules(.jar) files " +
-                    "into it before installing.";
+            EnsureModulesFolderExists(); //Method that checks if default modules folder exists else create it
 
-                if (System.Windows.MessageBox.Show(message,
-                        "Modules Folder Missing",
+
+        }
+
+        //this method checks if default modules folder exists. It was inside the MainViewModel Contructor
+        private void EnsureModulesFolderExists()
+        {
+            try
+            {
+                if (!Directory.Exists(ModulesFolder))
+                {
+                    var message =
+                        $"The default modules folder 📁 'lamismodules' was not found at:\n\n" +
+                        $"{ModulesFolder}\n\n" +
+                        "Would you like to create it now?\n\n" +
+                        "After the folder is created, please copy all the modules(.jar) files " +
+                        "into it before installing.";
+
+                    var result = System.Windows.MessageBox.Show(
+                        message,
+                        "Default Modules Folder is Missing",
                         System.Windows.MessageBoxButton.YesNo,
-                        System.Windows.MessageBoxImage.Question)
-                    == System.Windows.MessageBoxResult.Yes)
-                {
-                    Directory.CreateDirectory(ModulesFolder);
-                    AppendLog($"✅ Created modules folder: {ModulesFolder}");
-                    System.Windows.MessageBox.Show(
-                        $"A folder named 'lamismodules' has been created in your Local Disk (C:).\n\n" +
-                        $"📂 Location: {ModulesFolder}\n\n" +
-                        $"Please copy the newly released module files into this folder before proceeding with the installation.\n\n" +
-                        $"Idan baku gane ba, ku kira H.I",
-                        "Folder Created",
-                        System.Windows.MessageBoxButton.OK,
-                        System.Windows.MessageBoxImage.Information
+                        System.Windows.MessageBoxImage.Question
                     );
-                }
-                else
-                {
-                    AppendLog($"⚠️ Modules folder missing — please use the '📂 Select Modules Folder' button to choose a location.");
-                }
-            }
-            else
-            {
-                LoadLocalModules();
-            }
 
+                    if (result == System.Windows.MessageBoxResult.Yes)
+                    {
+                        Directory.CreateDirectory(ModulesFolder);
+                        AppendLog($"✅ Created modules folder: {ModulesFolder}");
+                        System.Windows.MessageBox.Show(
+                            $"A folder named 'lamismodules' has been created in your Local Disk (C:).\n\n" +
+                            $"📂 Location: {ModulesFolder}\n\n" +
+                            $"Please copy the newly released module files into this folder before proceeding with the installation.\n\n" +
+                            $"Idan baku gane ba, ku kira H.I",
+                            "Folder Created",
+                            System.Windows.MessageBoxButton.OK,
+                            System.Windows.MessageBoxImage.Information
+                        );
+
+                        // This reload modules after folder creation
+                        LoadLocalModules();
+                    }
+                    else
+                    {
+                        AppendLog($"⚠️ Modules folder missing — please use the '📂 Select Modules Folder' button to choose a location for .jar files.");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                AppendLog($"⚠️ Error verifying modules folder: {ex.Message}");
+            }
         }
 
         //Added browse folder to select modules folder
@@ -164,6 +182,8 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
                 AuthStatus = "✅ Authenticated";
                 IsAuthenticated = true;   // enable buttons
                 AppendLog("Login successful.");
+
+                EnsureModulesFolderExists(); //calling this method again to make sure default modules folder exists after login
 
                 await RefreshInstalledVersionsAsync();
             }

@@ -5,6 +5,12 @@
              StartupUri="MainWindow.xaml">
 
     <Application.Resources>
+        <ResourceDictionary>
         <local:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+        <local:BoolToBrushConverter x:Key="BoolToBrushConverter"/>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="MainWindowStyle.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
     </Application.Resources>
 </Application>

@@ -18,3 +18,15 @@
 
 
 
+\## \[1.1.0] - 2025-10-05
+
+\### Changed
+
+\- Buttons get smooth modern look with hover effect.
+
+\- GroupBoxes have subtle shadow + rounded corners.
+
+\- DataGrid headers are elegant with light gray background.
+
+\- Entire app has uniform margins, spacing, and padding.
+

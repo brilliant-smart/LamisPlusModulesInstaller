@@ -4,23 +4,52 @@
         Title="LamisPlus Module Installer" Height="600" Width="1000">
     <DockPanel>
 
-        <!-- 🔑 Auth Controls -->
-        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="10">
-            <TextBox Width="200" 
-                     Text="{Binding BaseUrl, UpdateSourceTrigger=PropertyChanged}" 
-                     Margin="5,0"/>
-            <TextBox Width="150" Margin="5" 
-                     Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}" />
+        <!-- 🔑 Authentication Section -->
+        <GroupBox Header="LAMISPlus Server Authentication" DockPanel.Dock="Top" Margin="10">
+            <StackPanel Margin="10">
 
-            <!-- Pass the whole PasswordBox into the command -->
-            <PasswordBox Width="150" Margin="5" x:Name="PasswordBox" />
-            <Button Content="Login" Width="100" Margin="5"
-                    Command="{Binding LoginCommand}"
-                    CommandParameter="{Binding ElementName=PasswordBox}" />
+                <!-- URL Row -->
+                <StackPanel Orientation="Horizontal" Margin="0,5">
+                    <TextBlock Text="Server URL:" Width="100" VerticalAlignment="Center"/>
+                    <TextBox Width="250"
+                             Text="{Binding BaseUrl, UpdateSourceTrigger=PropertyChanged}" 
+                             Margin="5,0" />
+                    <Border Width="120" Height="30" 
+                            CornerRadius="5" 
+                            VerticalAlignment="Center"
+                            Background="{Binding IsAuthenticated, Converter={StaticResource BoolToBrushConverter}}">
+                        <TextBlock Text="{Binding AuthStatus}" 
+                                   HorizontalAlignment="Center" 
+                                   VerticalAlignment="Center" 
+                                   FontWeight="Bold" 
+                                   Foreground="White" />
+                    </Border>
+                </StackPanel>
 
-            <TextBlock Text="{Binding AuthStatus}" Margin="10,0,0,0" 
-                       VerticalAlignment="Center" />
-        </StackPanel>
+                <!-- Username Row -->
+                <StackPanel Orientation="Horizontal" Margin="0,5">
+                    <TextBlock Text="Username:" Width="100" VerticalAlignment="Center"/>
+                    <TextBox Width="250"
+                             Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}" 
+                             Margin="5,0" />
+                </StackPanel>
+
+                <!-- Password Row -->
+                <StackPanel Orientation="Horizontal" Margin="0,5">
+                    <TextBlock Text="Password:" Width="100" VerticalAlignment="Center"/>
+                    <PasswordBox x:Name="PasswordBox" Width="250" Margin="5,0" />
+                </StackPanel>
+
+                <!-- Login Button -->
+                <Button Content="🔐 Login"
+                        Width="120"
+                        Margin="0,10,0,0"
+                        HorizontalAlignment="Left"
+                        Command="{Binding LoginCommand}"
+                        CommandParameter="{Binding ElementName=PasswordBox}" />
+            </StackPanel>
+        </GroupBox>
+
 
         <!-- 📂 Modules Folder Selector (new) -->
         <GroupBox Header="Use this section if you want to change the default modules folder" DockPanel.Dock="Top" Margin="10">
