@@ -95,18 +95,46 @@ namespace LamisPlusModulesInstaller
 
         public async Task<List<ModuleUploadResponse>> GetInstalledModulesAsync()
         {
-            var resp = await _http.GetAsync("/api/v1/modules/installed");
-            var body = await resp.Content.ReadAsStringAsync();
+            List<ModuleUploadResponse> modules = new();
 
-            if (!resp.IsSuccessStatusCode)
+            async Task<List<ModuleUploadResponse>> FetchAsync(string url)
             {
-                Console.WriteLine($"[GET INSTALLED ERROR] {resp.StatusCode}: {body}");
-                return new List<ModuleUploadResponse>();
+                var resp = await _http.GetAsync(url);
+                var body = await resp.Content.ReadAsStringAsync();
+
+                if (!resp.IsSuccessStatusCode)
+                {
+                    Console.WriteLine($"[GET INSTALLED ERROR] {resp.StatusCode}: {body}");
+                    return new List<ModuleUploadResponse>();
+                }
+
+                try
+                {
+                    var result = JsonSerializer.Deserialize<List<ModuleUploadResponse>>(body, _jsonOptions);
+                    if (result != null && result.Any())
+                        Console.WriteLine($"[GET INSTALLED OK] Fetched {result.Count} modules from {url}");
+                    return result ?? new List<ModuleUploadResponse>();
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[DESERIALIZE ERROR] {ex.Message}\nBody:\n{body}");
+                    return new List<ModuleUploadResponse>();
+                }
             }
 
-            return JsonSerializer.Deserialize<List<ModuleUploadResponse>>(body, _jsonOptions)
-                   ?? new List<ModuleUploadResponse>();
+            // Try the preferred endpoint first
+            modules = await FetchAsync("/api/v1/modules/installed");
+
+            // Fallback if empty
+            if (modules.Count == 0)
+            {
+                Console.WriteLine("[INFO] /api/v1/modules/installed returned no data. Trying /api/v1/modules...");
+                modules = await FetchAsync("/api/v1/modules");
+            }
+
+            return modules;
         }
+
 
         public async Task<bool> WaitForModuleRegisteredAsync(string moduleName, int timeoutSeconds = 60, int pollMs = 2000)
         {

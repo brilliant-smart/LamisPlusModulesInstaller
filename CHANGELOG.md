@@ -30,3 +30,77 @@
 
 \- Entire app has uniform margins, spacing, and padding.
 
+
+
+\## \[1.2.0] - 2025-10-07
+
+\### Improved
+
+\- Layout now keeps \*\*buttons, progress bar, and logs always visible\*\*, regardless of window resize.
+
+\- \*\*DataGrid scrolls independently\*\*, ensuring large module lists don’t push other UI elements out of view.
+
+\- \*\*Buttons remain fixed above logs\*\*, preventing UI jumping or overlap.
+
+\- All sections are visible immediately on launch — \*\*no manual resizing required\*\*.
+
+
+
+\### Added
+
+\- \*\*Automatic folder initialization\*\*:
+
+&nbsp; - Checks if module folder exists.
+
+&nbsp; - Prompts the user to create it if missing.
+
+&nbsp; - Creates the folder automatically upon confirmation.
+
+&nbsp; - Calls `LoadLocalModules()` immediately afterward to ensure modules are loaded every time.
+
+
+
+\### Summary
+
+A usability-focused release that stabilizes layout, improves scroll behavior, and automates module directory setup without changing core installer logic.
+
+
+
+\## \[1.2.1] - 2025-10-17
+
+\### Fixed
+
+\- \*\*Module auto-loading works again on startup.\*\*  
+
+&nbsp; - If the modules folder already exists, modules are now loaded immediately without requiring manual re-selection.
+
+&nbsp; - If the folder is missing or deleted, the app now prompts to create it and automatically loads modules after confirmation.
+
+
+
+\### Improved
+
+\- \*\*DataGrid now respects module install hierarchy.\*\*  
+
+&nbsp; Modules are sorted and displayed in the same dependency order, in an order to be used during the installation, making the UI reflect real execution flow.
+
+
+
+\- \*\*Installed version detection is now accurate.\*\*  
+
+&nbsp; - The app now queries LAMISPlus to match module names (`Patient` ↔ `PatientModule`) and fetch actual versions of the modules currently installed on the server.
+
+&nbsp; - Installed modules show their real version (e.g. `2.1.1`) instead of `(unknown)`.
+
+&nbsp; - Modules not found on the server are clearly labeled as \*\*Not Installed\*\* instead of ambiguous defaults (unknown).
+
+
+
+\### UX Summary
+
+A more intelligent and reliable modules' grid. Modules are now sorted based on dependency order (in an order in which they will be installed), and modules that are installed or currently on the server (lamisplus) are displayed with their versions correctly, not (unknown).
+
+
+
+
+

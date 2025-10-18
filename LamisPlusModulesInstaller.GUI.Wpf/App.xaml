@@ -6,11 +6,16 @@
 
     <Application.Resources>
         <ResourceDictionary>
-        <local:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
-        <local:BoolToBrushConverter x:Key="BoolToBrushConverter"/>
+
+            <!-- ✅ Converters registered globally -->
+            <local:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+            <local:BoolToBrushConverter x:Key="BoolToBrushConverter"/>
+
+            <!-- ✅ Global Styles -->
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="MainWindowStyle.xaml"/>
             </ResourceDictionary.MergedDictionaries>
+
         </ResourceDictionary>
     </Application.Resources>
 </Application>

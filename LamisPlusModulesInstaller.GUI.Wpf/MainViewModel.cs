@@ -81,7 +81,7 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
                         $"The default modules folder 📁 'lamismodules' was not found at:\n\n" +
                         $"{ModulesFolder}\n\n" +
                         "Would you like to create it now?\n\n" +
-                        "After the folder is created, please copy all the modules(.jar) files " +
+                        "After the folder is created, please copy all the modules (.jar) files " +
                         "into it before installing.";
 
                     var result = System.Windows.MessageBox.Show(
@@ -105,13 +105,20 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
                             System.Windows.MessageBoxImage.Information
                         );
 
-                        // This reload modules after folder creation
+                        // ✅ Load immediately after creation
                         LoadLocalModules();
                     }
                     else
                     {
-                        AppendLog($"⚠️ Modules folder missing — please use the '📂 Select Modules Folder' button to choose a location for .jar files.");
+                        AppendLog("⚠️ Modules folder missing — please use the '📂 Select Modules Folder' button to choose a location for .jar files.");
                     }
+                }
+                else
+                {
+                    // if the folder already exists and there are modules inside load them immediatly
+                    //they were not loading earlier until reselected. That's why this else is added.
+                    AppendLog($"📁 Found existing modules folder: {ModulesFolder}");
+                    LoadLocalModules();
                 }
             }
             catch (Exception ex)
@@ -119,6 +126,7 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
                 AppendLog($"⚠️ Error verifying modules folder: {ex.Message}");
             }
         }
+
 
         //Added browse folder to select modules folder
         [RelayCommand]
@@ -135,7 +143,8 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
 
 
 
-        //Replced hardcoded module folder method
+        //This method replaces the method that loads the modules without sorting them.
+        //This method sorts the modules based on the dependancy and installation hierachy 
         private void LoadLocalModules()
         {
             try
@@ -145,28 +154,47 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
                 if (Directory.Exists(ModulesFolder))
                 {
                     var moduleFiles = Directory.GetFiles(ModulesFolder, "*.jar");
-                    foreach (var file in moduleFiles)
-                    {
-                        Modules.Add(new ModuleViewModel
+
+                    // Create temporary list and sort
+                    var unsortedModules = moduleFiles
+                        .Select(file => new ModuleViewModel
                         {
                             Name = Path.GetFileNameWithoutExtension(file),
                             LocalVersion = ExtractVersionFromFilename(file),
                             InstalledVersion = "(unknown)",
                             Status = "Pending",
                             LocalPath = file
-                        });
-                    }
+                        })
+                        .ToList();
+
+                    // Sort based on dependency dictionary order
+                    var orderedModules = unsortedModules
+                        .OrderBy(m =>
+                        {
+                            // find key name in dependency dictionary
+                            var key = dependencies.Keys
+                                .FirstOrDefault(k => m.Name.Contains(k, StringComparison.OrdinalIgnoreCase));
+
+                            // use index in dictionary as priority
+                            return key != null ? dependencies.Keys.ToList().IndexOf(key) : int.MaxValue;
+                        })
+                        .ToList();
+
+                    // add to observable collection in proper order
+                    foreach (var mod in orderedModules)
+                        Modules.Add(mod);
                 }
                 else
                 {
-                    AppendLog($"⚠️ Directory not found: {ModulesFolder}");
+                    AppendLog($"Error Directory not found: {ModulesFolder}");
                 }
             }
             catch (Exception ex)
             {
-                AppendLog($"⚠️ Error scanning modules: {ex.Message}");
+                AppendLog($"Error scanning modules: {ex.Message}");
             }
         }
+
 
 
         [RelayCommand]
@@ -197,37 +225,78 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
 
         /// <summary>
         /// Calls server to refresh installed versions in the DataGrid.
+        /// Matches local JARs with server modules intelligently (e.g., patient ↔ PatientModule).
         /// </summary>
         private async Task RefreshInstalledVersionsAsync()
         {
             try
             {
+                AppendLog("🔄 Fetching installed modules from server...");
+
                 var installed = await _client.GetInstalledModulesAsync();
+
+                if (installed == null || installed.Count == 0)
+                {
+                    AppendLog("⚠️ No installed modules found on server.");
+                    foreach (var module in Modules)
+                        module.InstalledVersion = "Not Installed";
+                    return;
+                }
+
+                AppendLog($"✅ Found {installed.Count} modules from server.");
 
                 foreach (var module in Modules)
                 {
-                    var match = installed.FirstOrDefault(m =>
-                        m.Name.Contains(module.Name, StringComparison.OrdinalIgnoreCase) ||
-                        module.Name.Contains(m.Name, StringComparison.OrdinalIgnoreCase));
+                    string localName = module.Name
+                        .Replace("-", "", StringComparison.OrdinalIgnoreCase)
+                        .Replace("_", "", StringComparison.OrdinalIgnoreCase)
+                        .Replace("module", "", StringComparison.OrdinalIgnoreCase)
+                        .ToLower();
 
+                    // Smart match: try to find the most similar server module
+                    var match = installed.FirstOrDefault(m =>
+                    {
+                        if (string.IsNullOrWhiteSpace(m.Name))
+                            return false;
+
+                        var remoteName = m.Name
+                            .Replace("-", "", StringComparison.OrdinalIgnoreCase)
+                            .Replace("_", "", StringComparison.OrdinalIgnoreCase)
+                            .Replace("module", "", StringComparison.OrdinalIgnoreCase)
+                            .ToLower();
+
+                        return localName == remoteName || remoteName.Contains(localName) || localName.Contains(remoteName);
+                    });
+
+                    //this block displays the color of the modules in the modules grid after installed as it displays before installing any
                     if (match != null)
                     {
-                        module.InstalledVersion = match.Version ?? "?";
-                        module.Status = "Installed";
+                        module.InstalledVersion = string.IsNullOrWhiteSpace(match.Version)
+                            ? "(unknown)"
+                            : match.Version;
+
+                        // 🔹 Use SUCCESS to trigger your green color automatically
+                        module.Status = "SUCCESS";
+
+                        AppendLog($"✅ Found {module.Name} installed on server (v{module.InstalledVersion})");
                     }
                     else
                     {
-                        module.InstalledVersion = "(not installed)";
+                        module.InstalledVersion = "Not Installed";
+                        module.Status = "Not Installed"; // separates the color of pending and not installed
                     }
+
                 }
 
-                AppendLog("🔄 Installed module versions updated from server.");
+                AppendLog("🔁 Installed module versions updated successfully.");
             }
             catch (Exception ex)
             {
                 AppendLog($"⚠️ Failed to fetch installed modules: {ex.Message}");
             }
         }
+
+
 
         [RelayCommand]
         private async Task InstallAllAsync()
@@ -365,7 +434,7 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
 
 
 
-        // 📌 Extracts "2.1.1" from "patient-2.1.1.jar"
+        // e.g Extracts "2.1.1" from "patient-2.1.1.jar"
         private string ExtractVersionFromFilename(string path)
         {
             var name = Path.GetFileNameWithoutExtension(path);
