@@ -374,18 +374,110 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
             }
         }
 
-
+        //install selected module
         [RelayCommand]
         private async Task InstallSelectedAsync()
         {
-            foreach (var module in Modules)
+            var selectedModules = Modules.Where(m => m.IsSelected).ToList();
+
+            if (!selectedModules.Any())
             {
-                if (module.IsSelected)
-                    await InstallModuleAsync(module);
+                AppendLog("⚠️ No modules selected for installation.");
+                return;
             }
 
-            await RefreshInstalledVersionsAsync();
+            // For now, only support one at a time
+            if (selectedModules.Count > 1)
+            {
+                AppendLog("⚠️ Please install one module at a time (multi-select support coming soon).");
+                return;
+            }
+
+            var module = selectedModules.First();
+            AppendLog($"🧩 Preparing to install {module.Name}...");
+
+            // 🔍 Normalize the module key (ignore prefix numbers, etc.)
+            var cleanName = module.Name
+                .Replace("-", "", StringComparison.OrdinalIgnoreCase)
+                .Replace("_", "", StringComparison.OrdinalIgnoreCase)
+                .Replace("module", "", StringComparison.OrdinalIgnoreCase)
+                .Replace(" ", "")
+                .Trim()
+                .ToLowerInvariant();
+
+            var moduleKey = dependencies.Keys.FirstOrDefault(k =>
+                cleanName.Contains(k.ToLowerInvariant()));
+
+            if (moduleKey == null)
+            {
+                AppendLog($"⚠️ Unknown module: {module.Name}. Skipping dependency check.");
+            }
+            else
+            {
+                var deps = dependencies[moduleKey];
+                if (deps.Length > 0)
+                {
+                    // Refresh installed list first
+                    var installedModules = await _client.GetInstalledModulesAsync();
+                    var installedNames = installedModules
+                        .Select(m => m.Name?.Replace("-", "").Replace("_", "").Replace("module", "").Replace(" ", "").ToLowerInvariant())
+                        .Where(n => !string.IsNullOrWhiteSpace(n))
+                        .ToHashSet();
+
+                    var missingDeps = deps
+                        .Where(d => !installedNames.Any(inst => inst.Contains(d.ToLowerInvariant())))
+                        .ToList();
+
+                    if (missingDeps.Any())
+                    {
+                        AppendLog($"❌ Cannot install {module.Name}: missing dependencies → {string.Join(", ", missingDeps)}");
+                        module.Status = $"Missing: {string.Join(", ", missingDeps)}";
+                        return;
+                    }
+                    else
+                    {
+                        AppendLog($"✅ All dependencies satisfied for {module.Name} ({string.Join(", ", deps)})");
+                    }
+                }
+                else
+                {
+                    AppendLog($"ℹ️ {module.Name} has no dependencies.");
+                }
+            }
+
+            // 🚀 Proceed to installation
+            try
+            {
+                IsInstalling = true;
+                AppendLog($"📦 Uploading {module.Name}...");
+                module.Status = "Installing";
+
+                var uploadResp = await _client.UploadModuleAsync(module.LocalPath);
+                var result = await _client.InstallModuleAsync(uploadResp);
+
+                module.Status = result?.Type ?? "Failed";
+                module.InstalledVersion = result?.Module?.Version ?? "?";
+
+                if (module.Status.Equals("SUCCESS", StringComparison.OrdinalIgnoreCase))
+                    AppendLog($"✅ {module.Name} installed successfully (v{module.InstalledVersion})");
+                else
+                    AppendLog($"⚠️ {module.Name} installation returned status: {module.Status}");
+
+                await RefreshInstalledVersionsAsync();
+            }
+            catch (Exception ex)
+            {
+                module.Status = "Failed";
+                AppendLog($"❌ Installation failed for {module.Name}: {ex.Message}");
+            }
+            finally
+            {
+                IsInstalling = false;
+            }
         }
+
+
+
 
         [RelayCommand]
         private async Task RetryFailedAsync()
@@ -409,22 +501,38 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
         {
             try
             {
-                module.Status = "Installing"; //show progress
-                AppendLog($"Installing {module.Name}...");
+                var cleanName = module.Name
+                    .Replace("-", " ")
+                    .Replace("_", " ")
+                    .Trim();
+
+                AppendLog($"🧩 Preparing to install: {cleanName} (v{module.LocalVersion})");
+                AppendLog("📤 Uploading module to server...");
 
                 var uploadResp = await _client.UploadModuleAsync(module.LocalPath);
+
+                AppendLog("⚙️ Installing module on server...");
                 var result = await _client.InstallModuleAsync(uploadResp);
 
-                module.Status = result?.Type ?? "Failed";
-                module.InstalledVersion = result?.Module?.Version ?? "";
-                AppendLog($"[{module.Name}] {result?.Message}");
+                if (result?.Type?.Equals("SUCCESS", StringComparison.OrdinalIgnoreCase) == true)
+                {
+                    module.Status = "SUCCESS";
+                    module.InstalledVersion = result.Module?.Version ?? module.LocalVersion;
+                    AppendLog($"✅ Installation complete: {cleanName} (v{module.InstalledVersion})");
+                }
+                else
+                {
+                    module.Status = "Failed";
+                    AppendLog($"❌ Installation failed for {cleanName}: {result?.Message ?? "Unknown error"}");
+                }
             }
             catch (Exception ex)
             {
                 module.Status = "Failed";
-                AppendLog($"[{module.Name}] Exception: {ex.Message}");
+                AppendLog($"❌ {module.Name} failed: {ex.Message}");
             }
         }
+
 
 
         private void AppendLog(string message)

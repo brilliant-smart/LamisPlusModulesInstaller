@@ -26,5 +26,14 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
                 LogsTextBox.ScrollToEnd();
             };
         }
+
+        //event handler for check box if module is selected
+        private void CheckBox_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is System.Windows.Controls.CheckBox checkBox)
+                checkBox.GetBindingExpression(System.Windows.Controls.Primitives.ToggleButton.IsCheckedProperty)?.UpdateSource();
+        }
+
+
     }
 }

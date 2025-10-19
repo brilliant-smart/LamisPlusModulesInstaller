@@ -4,6 +4,15 @@
         Title="LamisPlus Module Installer"
         Height="900" Width="1000"
         MinHeight="800" MinWidth="900">
+<!-- for selecting a module to install selected -->
+<Window.Resources>
+    <Style x:Key="ImmediateCheckBoxUpdateStyle" TargetType="CheckBox">
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="HorizontalAlignment" Value="Center"/>
+        <Setter Property="IsThreeState" Value="False"/>
+        <EventSetter Event="Click" Handler="CheckBox_Click"/>
+    </Style>
+</Window.Resources>
 
     <Grid Margin="10">
         <Grid.RowDefinitions>
@@ -92,7 +101,10 @@
                     </DataGrid.RowStyle>
 
                     <DataGrid.Columns>
-                        <DataGridCheckBoxColumn Header="Select" Binding="{Binding IsSelected}" Width="50"/>
+                        <DataGridCheckBoxColumn Header="Select" Width="50"
+                                                EditingElementStyle="{StaticResource ImmediateCheckBoxUpdateStyle}"
+                                                ElementStyle="{StaticResource ImmediateCheckBoxUpdateStyle}"
+                                                Binding="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                         <DataGridTextColumn Header="Module Name" Binding="{Binding Name}" Width="200"/>
                         <DataGridTextColumn Header="Local Version" Binding="{Binding LocalVersion}" Width="120"/>
                         <DataGridTextColumn Header="Installed Version" Binding="{Binding InstalledVersion}" Width="120"/>
