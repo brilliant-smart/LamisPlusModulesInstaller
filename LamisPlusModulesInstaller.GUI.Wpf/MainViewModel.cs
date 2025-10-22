@@ -386,95 +386,104 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
                 return;
             }
 
-            // For now, only support one at a time
-            if (selectedModules.Count > 1)
+            AppendLog($"🧩 Starting installation for {selectedModules.Count} selected module(s)...");
+
+            // Normalization helper
+            // Normalization helper (stronger version)
+            string Normalize(string s)
             {
-                AppendLog("⚠️ Please install one module at a time (multi-select support coming soon).");
-                return;
+                if (string.IsNullOrWhiteSpace(s)) return string.Empty;
+
+                s = s.ToLowerInvariant().Trim();
+                s = s.Replace("-", "")
+                    .Replace("_", "")
+                    .Replace("module", "")
+                    .Replace("mod", "")
+                    .Replace("lamis", "")
+                    .Replace("plus", "")
+                    .Replace(" ", "");
+
+                // remove numeric suffixes like "21", "204", etc.
+                s = new string(s.TakeWhile(c => !char.IsDigit(c)).ToArray());
+
+                return s;
             }
 
-            var module = selectedModules.First();
-            AppendLog($"🧩 Preparing to install {module.Name}...");
+            // Normalize dependency dictionary (once)
+            var normalizedDeps = dependencies.ToDictionary(
+                d => Normalize(d.Key),
+                d => d.Value.Select(Normalize).ToArray(),
+                StringComparer.OrdinalIgnoreCase
+            );
 
-            // 🔍 Normalize the module key (ignore prefix numbers, etc.)
-            var cleanName = module.Name
-                .Replace("-", "", StringComparison.OrdinalIgnoreCase)
-                .Replace("_", "", StringComparison.OrdinalIgnoreCase)
-                .Replace("module", "", StringComparison.OrdinalIgnoreCase)
-                .Replace(" ", "")
-                .Trim()
-                .ToLowerInvariant();
+            // 1️⃣ Fetch installed modules from server
+            var installed = (await _client.GetInstalledModulesAsync())
+                .Select(m => Normalize(m.Name))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-            var moduleKey = dependencies.Keys.FirstOrDefault(k =>
-                cleanName.Contains(k.ToLowerInvariant()));
+            AppendLog($"🔍 Installed modules (normalized): {string.Join(", ", installed)}");
 
-            if (moduleKey == null)
+            var newlyInstalled = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var module in selectedModules)
             {
-                AppendLog($"⚠️ Unknown module: {module.Name}. Skipping dependency check.");
-            }
-            else
-            {
-                var deps = dependencies[moduleKey];
-                if (deps.Length > 0)
+                var cleanName = Normalize(module.Name);
+                var key = normalizedDeps.Keys.FirstOrDefault(k => cleanName.Contains(k));
+                var deps = key != null ? normalizedDeps[key] : Array.Empty<string>();
+
+                AppendLog($"⚙️ Checking dependencies for: {module.Name}");
+
+                var missing = deps
+                    .Where(d => !installed.Contains(d) && !newlyInstalled.Contains(d))
+                    .ToList();
+
+                if (missing.Any())
                 {
-                    // Refresh installed list first
-                    var installedModules = await _client.GetInstalledModulesAsync();
-                    var installedNames = installedModules
-                        .Select(m => m.Name?.Replace("-", "").Replace("_", "").Replace("module", "").Replace(" ", "").ToLowerInvariant())
-                        .Where(n => !string.IsNullOrWhiteSpace(n))
-                        .ToHashSet();
+                    AppendLog($"❌ Skipping {module.Name} — missing dependencies: {string.Join(", ", missing)}");
+                    module.Status = $"Skipped (Missing: {string.Join(", ", missing)})";
+                    continue;
+                }
 
-                    var missingDeps = deps
-                        .Where(d => !installedNames.Any(inst => inst.Contains(d.ToLowerInvariant())))
-                        .ToList();
+                // 🚀 Proceed with installation
+                try
+                {
+                    IsInstalling = true;
+                    AppendLog($"📦 Uploading {module.Name}...");
+                    module.Status = "Installing";
 
-                    if (missingDeps.Any())
+                    var uploadResp = await _client.UploadModuleAsync(module.LocalPath);
+                    var result = await _client.InstallModuleAsync(uploadResp);
+
+                    module.Status = result?.Type ?? "Failed";
+                    module.InstalledVersion = result?.Module?.Version ?? "?";
+
+                    if (module.Status.Equals("SUCCESS", StringComparison.OrdinalIgnoreCase))
                     {
-                        AppendLog($"❌ Cannot install {module.Name}: missing dependencies → {string.Join(", ", missingDeps)}");
-                        module.Status = $"Missing: {string.Join(", ", missingDeps)}";
-                        return;
+                        newlyInstalled.Add(cleanName);
+                        AppendLog($"✅ {module.Name} installed successfully (v{module.InstalledVersion})");
                     }
                     else
                     {
-                        AppendLog($"✅ All dependencies satisfied for {module.Name} ({string.Join(", ", deps)})");
+                        AppendLog($"⚠️ {module.Name} installation returned status: {module.Status}");
                     }
                 }
-                else
+                catch (Exception ex)
                 {
-                    AppendLog($"ℹ️ {module.Name} has no dependencies.");
+                    module.Status = "Failed";
+                    AppendLog($"❌ Installation failed for {module.Name}: {ex.Message}");
+                }
+                finally
+                {
+                    IsInstalling = false;
                 }
             }
 
-            // 🚀 Proceed to installation
-            try
-            {
-                IsInstalling = true;
-                AppendLog($"📦 Uploading {module.Name}...");
-                module.Status = "Installing";
-
-                var uploadResp = await _client.UploadModuleAsync(module.LocalPath);
-                var result = await _client.InstallModuleAsync(uploadResp);
-
-                module.Status = result?.Type ?? "Failed";
-                module.InstalledVersion = result?.Module?.Version ?? "?";
-
-                if (module.Status.Equals("SUCCESS", StringComparison.OrdinalIgnoreCase))
-                    AppendLog($"✅ {module.Name} installed successfully (v{module.InstalledVersion})");
-                else
-                    AppendLog($"⚠️ {module.Name} installation returned status: {module.Status}");
-
-                await RefreshInstalledVersionsAsync();
-            }
-            catch (Exception ex)
-            {
-                module.Status = "Failed";
-                AppendLog($"❌ Installation failed for {module.Name}: {ex.Message}");
-            }
-            finally
-            {
-                IsInstalling = false;
-            }
+            await RefreshInstalledVersionsAsync();
+            AppendLog("🔁 Selected modules installation completed.");
         }
+
+
+
 
 
 
