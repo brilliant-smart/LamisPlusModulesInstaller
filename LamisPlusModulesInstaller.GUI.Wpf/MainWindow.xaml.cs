@@ -34,6 +34,9 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
                 checkBox.GetBindingExpression(System.Windows.Controls.Primitives.ToggleButton.IsCheckedProperty)?.UpdateSource();
         }
 
+        private void Button_Click()
+        {
 
+        }
     }
 }

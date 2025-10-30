@@ -53,7 +53,6 @@ A more intelligent and reliable modules' grid. Modules are now sorted based on d
 ---
 
 ## [2.0.0] - 2025-10-19
-
 ### Added
 - **Install Selected Command** — Users can now install a single module manually instead of always using “Install All”.
 - **Dependency validation before install** — If a module depends on others (e.g. ENCOUNTER → PATIENT), the installer checks server-installed modules first and blocks installation if dependencies are missing.
@@ -65,9 +64,9 @@ A more intelligent and reliable modules' grid. Modules are now sorted based on d
 ### Summary
 This version introduces **manual control over installation** with single-module deployment and **intelligent dependency checks**, laying the groundwork for upcoming multi-select support in **v2.1.0**. Which users can select multiple modules and install them in bulk.
 
+---
 
 ## [2.2.0] - 2025-10-22
-
 ### Added
 - **Multi-module selection and installation** — Users can now select and install multiple modules in one batch.
 - **Automatic dependency resolution** — If selected modules depend on others also selected, they are automatically installed first.
@@ -83,21 +82,24 @@ Version **2.2.0** brings full **multi-select installation** powered by a depende
 It intelligently installs in the correct hierarchy, tracks progress across all modules, and halts gracefully on missing prerequisites.  
 This release solidifies the installer as a reliable tool for managing complex LAMISPlus module deployments.
 
+---
 
-## [2.2.0] - 2025-10-22
+## [2.3.1] - 2025-10-30
 
 ### Added
-- **Multi-module selection and installation** — Users can now select and install multiple modules in one batch.
-- **Automatic dependency resolution** — If selected modules depend on others also selected, they are automatically installed first.
-- **Progress tracking for multiple modules** — Real-time installation percentage and logs show progress across all selected modules.
+- **Post-installation summary report** — Displays total number of modules processed, with counts of ✅ successful, ❌ failed, and ⏭️ skipped installs.
+- **Improved dependency validation logic** — Modules that fail due to missing dependencies now display the exact missing modules.
+- **Server message relay** — Backend errors (e.g., rollback-only transactions or unsatisfied requirements) are now surfaced directly in the log.
+- **Update All and Update Selected commands** — Users can now update all or specific modules automatically by clicking the appropriate button **Its implementation will come in the next update**.
+  - Only the buttons are added so far
 
 ### Improved
-- **Dependency enforcement** — The installer now strictly validates dependencies before each install. Missing prerequisites outside the selection stop the operation with a clear alert.
-- **Normalized dependency handling** — Consistent name matching ensures even modules with naming variations (e.g. `HIV-Module`, `hivmodule`, `HIV`) are correctly identified.
-- **Robust logging** — Detailed feedback for every module: dependency checks, upload, install status, and completion summaries.
+- **Error resilience** — Even when one module fails, others continue installing or updating; missing dependencies are skipped cleanly instead of aborting the process.
+- **Logging clarity** — Each module action (check, upload, install/update, verify) is timestamped and includes precise status with emojis for easy tracking.
+- **Installation and update verification** — The installer now automatically re-checks the server after ambiguous responses to confirm whether a module was successfully installed or updated.
+- **Final status transparency** — At the end of each batch installation or update, a structured summary block is printed in the logs for audit and debugging.
 
 ### Summary
-Version **2.2.0** brings full **multi-select installation** powered by a dependency-aware engine.  
-It intelligently installs in the correct hierarchy, tracks progress across all modules, and halts gracefully on missing prerequisites.  
-This release solidifies the installer as a reliable tool for managing complex LAMISPlus module deployments.
-
+Version **2.3.1** unifies **installation and update operations** into a single intelligent engine.  
+Users can now install, update, and verify modules with complete transparency — seeing exactly what succeeded, failed, or was skipped.  
+This release brings the most comprehensive and user-friendly experience yet, closing the loop between **local module management and server state**.

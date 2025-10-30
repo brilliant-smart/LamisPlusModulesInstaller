@@ -52,10 +52,8 @@ namespace LamisPlusModulesInstaller
 
         public async Task<ModuleInstallResponse?> InstallModuleAsync(ModuleUploadResponse uploaded)
         {
-            // this is the endpoint that works "/api/v1/modules/install" failed
             var url = "/api/v1/modules/install?install=true";
 
-            // the payload that matches the expected module object is camelCase, therefore it is changed
             var payload = new
             {
                 active = uploaded.Active,
@@ -64,7 +62,7 @@ namespace LamisPlusModulesInstaller
                 description = uploaded.Description,
                 name = uploaded.Name,
                 version = uploaded.Version,
-                @new = uploaded.New, // will serialize to "new" because of camelCase naming policy
+                @new = uploaded.New,
                 installOnBoot = uploaded.InstallOnBoot ?? false,
                 priority = uploaded.Priority
             };
@@ -75,23 +73,85 @@ namespace LamisPlusModulesInstaller
             var resp = await _http.PostAsync(url, content);
             var body = await resp.Content.ReadAsStringAsync();
 
-            if (!resp.IsSuccessStatusCode)
+            try
             {
-                Console.WriteLine($"[INSTALL ERROR] {resp.StatusCode}: {body}");
-                // Try to deserialize error payload into ModuleInstallResponse if possible
-                try
-                {
-                    return JsonSerializer.Deserialize<ModuleInstallResponse>(body, _jsonOptions);
-                }
-                catch
-                {
-                    return null;
-                }
-            }
+                var parsed = JsonSerializer.Deserialize<ModuleInstallResponse>(body, _jsonOptions);
 
-            Console.WriteLine($"[INSTALL OK] {body}");
-            return JsonSerializer.Deserialize<ModuleInstallResponse>(body, _jsonOptions);
+                // Handle empty/invalid responses
+                if (parsed == null)
+                {
+                    Console.WriteLine($"[INSTALL ERROR] Invalid or empty response: {body}");
+                    return new ModuleInstallResponse
+                    {
+                        Type = "ERROR",
+                        Message = "Invalid or empty response from server."
+                    };
+                }
+
+                // Detect dependency or rollback errors
+                if (!string.IsNullOrEmpty(body) &&
+                    body.Contains("Unsatisfied module requirement", StringComparison.OrdinalIgnoreCase))
+                {
+                    var msg = parsed.UnifiedMessage;
+                    if (string.IsNullOrWhiteSpace(msg))
+                        msg = "Missing module dependency (see LAMIS logs).";
+
+                    Console.WriteLine($"[INSTALL ERROR] Dependency issue: {msg}");
+                    return new ModuleInstallResponse
+                    {
+                        Type = "ERROR",
+                        Message = msg,
+                        Module = parsed.Module
+                    };
+                }
+
+                // Detect rollback-only transactions
+                if (!string.IsNullOrEmpty(body) &&
+                    body.Contains("rollback-only", StringComparison.OrdinalIgnoreCase))
+                {
+                    var msg = parsed.UnifiedMessage;
+                    Console.WriteLine($"[INSTALL ERROR] Transaction rolled back: {msg}");
+                    return new ModuleInstallResponse
+                    {
+                        Type = "ERROR",
+                        Message = "Transaction rolled back during installation. See LAMIS logs.",
+                        Module = parsed.Module
+                    };
+                }
+
+                // Regular LAMIS error
+                if (parsed.Type?.Equals("ERROR", StringComparison.OrdinalIgnoreCase) == true ||
+                    parsed.Type?.Equals("FAILED", StringComparison.OrdinalIgnoreCase) == true)
+                {
+                    Console.WriteLine($"[INSTALL ERROR] {parsed.UnifiedMessage}");
+                    return parsed;
+                }
+
+                // HTTP-level error (400, 500)
+                if (!resp.IsSuccessStatusCode)
+                {
+                    Console.WriteLine($"[INSTALL HTTP ERROR] {resp.StatusCode}: {body}");
+                    return new ModuleInstallResponse
+                    {
+                        Type = "ERROR",
+                        Message = $"HTTP {resp.StatusCode}: {body}"
+                    };
+                }
+
+                Console.WriteLine($"[INSTALL OK] {parsed.UnifiedMessage}");
+                return parsed;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[INSTALL EXCEPTION] {ex.Message}\nResponse: {body}");
+                return new ModuleInstallResponse
+                {
+                    Type = "ERROR",
+                    Message = $"Exception: {ex.Message}"
+                };
+            }
         }
+
 
         public async Task<List<ModuleUploadResponse>> GetInstalledModulesAsync()
         {
@@ -136,23 +196,51 @@ namespace LamisPlusModulesInstaller
         }
 
 
-        public async Task<bool> WaitForModuleRegisteredAsync(string moduleName, int timeoutSeconds = 60, int pollMs = 2000)
+        public async Task<bool> WaitForModuleRegisteredAsync(string moduleName, int timeoutSeconds = 45, int pollMs = 3000)
         {
+            var normalizedTarget = moduleName.ToLowerInvariant()
+                .Replace("-", "")
+                .Replace("_", "")
+                .Replace("module", "")
+                .Replace("lamis", "")
+                .Replace("plus", "")
+                .Trim();
+
             var deadline = DateTime.UtcNow.AddSeconds(timeoutSeconds);
 
             while (DateTime.UtcNow < deadline)
             {
-                var installed = await GetInstalledModulesAsync();
-                var found = installed.FirstOrDefault(m =>
-                    string.Equals(m.Name, moduleName, StringComparison.OrdinalIgnoreCase));
+                try
+                {
+                    var installed = await GetInstalledModulesAsync();
 
-                if (found != null && found.InError != true)
-                    return true;
+                    var found = installed.FirstOrDefault(m =>
+                        !string.IsNullOrWhiteSpace(m.Name) &&
+                        (
+                            m.Name.Equals(moduleName, StringComparison.OrdinalIgnoreCase) ||
+                            m.Name.ToLowerInvariant()
+                                .Replace("-", "")
+                                .Replace("_", "")
+                                .Replace("module", "")
+                                .Replace("lamis", "")
+                                .Replace("plus", "")
+                                .Trim()
+                                .Equals(normalizedTarget, StringComparison.OrdinalIgnoreCase)
+                        ));
+
+                    if (found != null && found.InError != true)
+                        return true;
+                }
+                catch
+                {
+                    // transient network issues — just retry
+                }
 
                 await Task.Delay(pollMs);
             }
 
             return false;
         }
+
     }
 }

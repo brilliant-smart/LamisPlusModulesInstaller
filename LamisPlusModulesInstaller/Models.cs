@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
 namespace LamisPlusModulesInstaller
@@ -54,10 +55,32 @@ namespace LamisPlusModulesInstaller
         public string ModuleName { get; set; } = string.Empty;
     }
 
+    //public class ModuleInstallResponse
+    //{
+    //    public string? Type { get; set; }   // "SUCCESS" or "ERROR"
+    //    public string? Message { get; set; }
+    //    public string? message { get; set; }  // handle lowercase too
+    //    public ModuleUploadResponse? Module { get; set; }
+    //}
+
     public class ModuleInstallResponse
     {
-        public string? Type { get; set; }   // "SUCCESS" or "ERROR"
-        public string? Message { get; set; }
+        public string? Type { get; set; }          // "SUCCESS" or "ERROR"
+        public string? Message { get; set; }       // Main human-readable message
+        public string? message { get; set; }       // Sometimes lowercase from server
+        public string? Status { get; set; }        // Optional alternative key
+        public string? DebugMessage { get; set; }  // Server diagnostic info
+        public string? Error { get; set; }         // Alternative error text
         public ModuleUploadResponse? Module { get; set; }
+
+        [JsonIgnore]
+        public string UnifiedMessage =>
+            !string.IsNullOrWhiteSpace(Message) ? Message! :
+            !string.IsNullOrWhiteSpace(message) ? message! :
+            !string.IsNullOrWhiteSpace(DebugMessage) ? DebugMessage! :
+            !string.IsNullOrWhiteSpace(Error) ? Error! :
+            "(no message returned)";
     }
+
+
 }

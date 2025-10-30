@@ -63,7 +63,7 @@
             <StackPanel Orientation="Horizontal" Margin="10">
                 <TextBox Width="400" Text="{Binding ModulesFolder, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                          IsReadOnly="True" Margin="0,0,10,0"/>
-                <Button Content="📂 Select Modules Folder" Width="150"
+                <Button Content="📂 Select Modules Folder" Width="160"
                         Command="{Binding BrowseModulesFolderCommand}"
                         IsEnabled="{Binding IsAuthenticated}"/>
             </StackPanel>
@@ -124,15 +124,23 @@
                 <Button Content="Install All" Width="120" Margin="5" 
                         Command="{Binding InstallAllCommand}"
                         IsEnabled="{Binding IsAuthenticated}" />
-                <Button Content="Install Selected" Width="120" Margin="5" 
+
+                <Button Content="Install Selected" Width="130" Margin="5" 
                         Command="{Binding InstallSelectedCommand}"
                         IsEnabled="{Binding IsAuthenticated}" />
-                <Button Content="Retry Failed" Width="120" Margin="5" 
-                        Command="{Binding RetryFailedCommand}"
+
+                <Button Content="Update All" Width="120" Margin="5"
+                        Command="{Binding UpdateAllCommand}"
                         IsEnabled="{Binding IsAuthenticated}" />
+
+                <Button Content="Update Selected" Width="140" Margin="5"
+                        Command="{Binding UpdateSelectedCommand}"
+                        IsEnabled="{Binding IsAuthenticated}" />
+
                 <Button Content="Clear Logs" Width="120" Margin="5"
                         Command="{Binding ClearLogsCommand}" />
             </StackPanel>
+
         </StackPanel>
 
         <!-- 📜 Logs -->
