@@ -1,20 +1,50 @@
 ﻿################################################################################
-# This .gitignore file was automatically created by Microsoft(R) Visual Studio.
+# LamisPlusModulesInstaller - Safe GitHub Version
 ################################################################################
 
-
 # Visual Studio temp data
-/.vs
+.vs/
 
 # Build and output folders
 bin/
 obj/
+publish/
+[Bb]uild/
+[Oo]ut/
 
 # User-specific files
 *.user
 *.suo
 *.userosscache
 
-# Other unnecessary system files
+# Installer and published files (large binaries)
+*.exe
+*.dll
+*.msi
+*.zip
+*.7z
+*.tar
+*.gz
+*.iso
+
+# NuGet packages
+*.nupkg
+packages/
+*.snupkg
+
+# Logs and temporary files
 *.log
 *.tmp
+*.cache
+*.bak
+
+# System and OS files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+
+# IDE specific
+*.swp
+*.vscode/
+*.idea/
