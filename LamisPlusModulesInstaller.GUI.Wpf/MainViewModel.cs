@@ -1,6 +1,7 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
@@ -8,7 +9,6 @@ using System.Net.Http;
 using System.Threading.Tasks;
 using WinForms = System.Windows.Forms;
 using WpfApp = System.Windows;
-
 
 
 namespace LamisPlusModulesInstaller.GUI.Wpf
@@ -59,19 +59,49 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
                 { "Client-sync", Array.Empty<string>() }
             };
 
-        //constructor updated to warn the user if the default folder does not exist
-        //A method to ensure that the modules folder exists during runtime is created.
-        //So, modules check control flow are moved into it, and the method is now called inside the constructor
         public MainViewModel()
         {
             _client = new ModuleClient(BaseUrl, "");
 
             EnsureModulesFolderExists(); //Method that checks if default modules folder exists else create it
+        }
 
+        // ----------------------------------------------------
+        // Central Normalize function (single canonical helper)
+        // ----------------------------------------------------
+        private static string Normalize(string s)
+        {
+            if (string.IsNullOrWhiteSpace(s)) return string.Empty;
+
+            // 1. Lowercase, trim
+            s = s.Trim().ToLowerInvariant();
+
+            // 2. Remove common words and separators used in filenames & module names
+            s = s.Replace("-", "")
+                 .Replace("_", "")
+                 .Replace("module", "")
+                 .Replace("mod", "")
+                 .Replace("lamis", "")
+                 .Replace("plus", "")
+                 .Replace(" ", "");
+
+            // 3. Keep letters and digits (remove other symbols)
+            var cleaned = new string(s.Where(char.IsLetterOrDigit).ToArray());
+
+            // 4. If cleaned is empty (rare), fallback to removing only separators
+            if (string.IsNullOrWhiteSpace(cleaned))
+                cleaned = s.Replace(" ", "").Replace("-", "").Replace("_", "");
+
+            // 5. Trim trailing digits that represent jar suffixes (optional)
+            cleaned = new string(cleaned.TakeWhile(c => !char.IsDigit(c)).ToArray());
+
+            return string.IsNullOrWhiteSpace(cleaned) ? s : cleaned;
 
         }
 
-        //this method checks if default modules folder exists. It was inside the MainViewModel Contructor
+        // -------------------------
+        // Folder and module loading
+        // -------------------------
         private void EnsureModulesFolderExists()
         {
             try
@@ -106,7 +136,6 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
                             System.Windows.MessageBoxImage.Information
                         );
 
-                        // ✅ Load immediately after creation
                         LoadLocalModules();
                     }
                     else
@@ -116,8 +145,6 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
                 }
                 else
                 {
-                    // if the folder already exists and there are modules inside load them immediatly
-                    //they were not loading earlier until reselected. That's why this else is added.
                     AppendLog($"📁 Found existing modules folder: {ModulesFolder}");
                     LoadLocalModules();
                 }
@@ -128,8 +155,6 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
             }
         }
 
-
-        //Added browse folder to select modules folder
         [RelayCommand]
         private void BrowseModulesFolder()
         {
@@ -142,10 +167,6 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
             }
         }
 
-
-
-        //This method replaces the method that loads the modules without sorting them.
-        //This method sorts the modules based on the dependancy and installation hierachy 
         private void LoadLocalModules()
         {
             try
@@ -156,7 +177,6 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
                 {
                     var moduleFiles = Directory.GetFiles(ModulesFolder, "*.jar");
 
-                    // Create temporary list and sort
                     var unsortedModules = moduleFiles
                         .Select(file => new ModuleViewModel
                         {
@@ -168,20 +188,18 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
                         })
                         .ToList();
 
-                    // Sort based on dependency dictionary order
+                    // Sort based on normalized dependency dictionary order
                     var orderedModules = unsortedModules
                         .OrderBy(m =>
                         {
-                            // find key name in dependency dictionary
+                            var normalized = Normalize(m.Name);
                             var key = dependencies.Keys
-                                .FirstOrDefault(k => m.Name.Contains(k, StringComparison.OrdinalIgnoreCase));
+                                .FirstOrDefault(k => normalized.Contains(Normalize(k), StringComparison.OrdinalIgnoreCase));
 
-                            // use index in dictionary as priority
                             return key != null ? dependencies.Keys.ToList().IndexOf(key) : int.MaxValue;
                         })
                         .ToList();
 
-                    // add to observable collection in proper order
                     foreach (var mod in orderedModules)
                         Modules.Add(mod);
                 }
@@ -196,8 +214,9 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
             }
         }
 
-
-
+        // -------------------------
+        // Authentication
+        // -------------------------
         [RelayCommand]
         private async Task LoginAsync(System.Windows.Controls.PasswordBox passwordBox)
         {
@@ -216,7 +235,7 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
                 _client = new ModuleClient(BaseUrl, token);
 
                 AuthStatus = "✅ Authenticated";
-                IsAuthenticated = true;//if authenticated, the install buttons will be enabled
+                IsAuthenticated = true;
                 AppendLog("Login successful.");
 
                 EnsureModulesFolderExists();
@@ -231,16 +250,14 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
             catch (Exception ex)
             {
                 AuthStatus = $"❌ Login failed: {ex.Message}";
-                IsAuthenticated = false;//if login failed, keep the install buttons disabled
+                IsAuthenticated = false;
                 AppendLog(AuthStatus);
             }
         }
 
-
-        /// <summary>
-        /// Calls server to refresh installed versions in the DataGrid.
-        /// Matches local JARs with server modules intelligently (e.g., patient ↔ PatientModule).
-        /// </summary>
+        // ------------------------------------
+        // Refresh installed versions on server
+        // ------------------------------------
         private async Task RefreshInstalledVersionsAsync()
         {
             try
@@ -261,43 +278,28 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
 
                 foreach (var module in Modules)
                 {
-                    string localName = module.Name
-                        .Replace("-", "", StringComparison.OrdinalIgnoreCase)
-                        .Replace("_", "", StringComparison.OrdinalIgnoreCase)
-                        .Replace("module", "", StringComparison.OrdinalIgnoreCase)
-                        .ToLower();
+                    var localName = Normalize(module.Name);
 
-                    // Smart match: try to find the most similar server module
                     var match = installed.FirstOrDefault(m =>
                     {
                         if (string.IsNullOrWhiteSpace(m.Name))
                             return false;
 
-                        var remoteName = m.Name
-                            .Replace("-", "", StringComparison.OrdinalIgnoreCase)
-                            .Replace("_", "", StringComparison.OrdinalIgnoreCase)
-                            .Replace("module", "", StringComparison.OrdinalIgnoreCase)
-                            .ToLower();
+                        var remoteName = Normalize(m.Name);
 
                         return localName == remoteName || remoteName.Contains(localName) || localName.Contains(remoteName);
                     });
 
-                    //this block displays the color of the modules in the modules grid after installed as it displays before installing any
                     if (match != null)
                     {
-                        module.InstalledVersion = string.IsNullOrWhiteSpace(match.Version)
-                            ? "(unknown)"
-                            : match.Version;
-
-                        // 🔹 Use SUCCESS to trigger your green color automatically
+                        module.InstalledVersion = string.IsNullOrWhiteSpace(match.Version) ? "(unknown)" : match.Version;
                         module.Status = "SUCCESS";
-
                         AppendLog($"✅ Found {module.Name} installed on server (v{module.InstalledVersion})");
                     }
                     else
                     {
                         module.InstalledVersion = "Not Installed";
-                        module.Status = "Not Installed"; // separates the color of pending and not installed
+                        module.Status = "Not Installed";
                     }
 
                 }
@@ -310,8 +312,9 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
             }
         }
 
-
-
+        // ------------------------------
+        // Install All (dependency-aware)
+        // ------------------------------
         [RelayCommand]
         private async Task InstallAllAsync()
         {
@@ -319,30 +322,33 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
             try
             {
                 var installed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                //added for progress bar with percentage
                 TotalModules = dependencies.Count;
                 CompletedModules = 0;
 
                 foreach (var kvp in dependencies)
                 {
-                    string moduleKey = kvp.Key;
+                    var moduleKeyRaw = kvp.Key;
+                    var moduleKey = Normalize(moduleKeyRaw);
                     string[] deps = kvp.Value;
 
+                    // normalize deps
+                    var normalizedDeps = deps.Select(Normalize).ToArray();
+
                     // Skip if dependencies not ready
-                    if (!deps.All(d => installed.Contains(d)))
+                    if (!normalizedDeps.All(d => installed.Contains(d)))
                     {
-                        AppendLog($"⏩ Skipping {moduleKey}, dependencies not satisfied: {string.Join(", ", deps)}");
+                        AppendLog($"⏩ Skipping {moduleKeyRaw}, dependencies not satisfied: {string.Join(", ", kvp.Value)}");
                         CompletedModules++;
                         UpdateProgress();
                         continue;
                     }
 
-                    var module = Modules.FirstOrDefault(m =>
-                        m.Name.Contains(moduleKey, StringComparison.OrdinalIgnoreCase));
+                    // find local module by normalized name
+                    var module = Modules.FirstOrDefault(m => Normalize(m.Name).Contains(moduleKey, StringComparison.OrdinalIgnoreCase));
 
                     if (module == null)
                     {
-                        AppendLog($"❌ No local JAR found for {moduleKey}");
+                        AppendLog($"❌ No local JAR found for {moduleKeyRaw}");
                         CompletedModules++;
                         UpdateProgress();
                         continue;
@@ -362,11 +368,10 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
             finally
             {
                 IsInstalling = false;
-                UpdateProgress(true); // mark complete
+                UpdateProgress(true);
             }
         }
 
-        //Helper method for install asyn method and improved progress bar
         private void UpdateProgress(bool finished = false)
         {
             if (TotalModules == 0)
@@ -388,8 +393,9 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
             }
         }
 
-
-        // install selected module
+        // -------------------------------------------------------------------------
+        // Install Selected module (multi-select but with dependency-aware ordering)
+        // -------------------------------------------------------------------------
         [RelayCommand]
         private async Task InstallSelectedAsync()
         {
@@ -403,29 +409,18 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
 
             AppendLog($"🧩 Starting installation for {selectedModules.Count} selected module(s)...");
 
-            // Normalization helper
-            string Normalize(string s)
+            // Normalize dependency dictionary safely
+            var normalizedDeps = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+            foreach (var kvp in dependencies)
             {
-                if (string.IsNullOrWhiteSpace(s)) return string.Empty;
-                s = s.ToLowerInvariant().Trim();
-                s = s.Replace("-", "")
-                    .Replace("_", "")
-                    .Replace("module", "")
-                    .Replace("mod", "")
-                    .Replace("lamis", "")
-                    .Replace("plus", "")
-                    .Replace(" ", "");
-                // remove numeric suffixes like "21", "204", etc.
-                s = new string(s.TakeWhile(c => !char.IsDigit(c)).ToArray());
-                return s;
+                var key = Normalize(kvp.Key);
+                if (string.IsNullOrWhiteSpace(key)) continue;
+                if (!normalizedDeps.ContainsKey(key))
+                    normalizedDeps[key] = kvp.Value.Select(Normalize)
+                        .Where(v => !string.IsNullOrWhiteSpace(v))
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToArray();
             }
-
-            // Normalize dependency dictionary 
-            var normalizedDeps = dependencies.ToDictionary(
-                d => Normalize(d.Key),
-                d => d.Value.Select(Normalize).ToArray(),
-                StringComparer.OrdinalIgnoreCase
-            );
 
             // fetch installed modules from the server at start
             var installed = (await _client.GetInstalledModulesAsync())
@@ -439,95 +434,125 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
             var failedCount = 0;
             var skippedCount = 0;
 
-            foreach (var module in selectedModules)
+            // process in dependency-aware order by repeatedly trying modules whose deps are satisfied
+            var pending = selectedModules.Select(m => Normalize(m.Name)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            var processed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            int safety = 0;
+            while (processed.Count < pending.Count && safety++ < 100)
             {
-                var cleanName = Normalize(module.Name);
-                var key = normalizedDeps.Keys.FirstOrDefault(k => cleanName.Contains(k));
-                var deps = key != null ? normalizedDeps[key] : Array.Empty<string>();
-
-                AppendLog($"⚙️ Checking dependencies for: {module.Name}");
-
-                var missing = deps
-                    .Where(d => !installed.Contains(d) && !newlyInstalled.Contains(d))
-                    .ToList();
-
-                if (missing.Any())
+                bool progress = false;
+                var toTry = pending.Except(processed).ToList();
+                foreach (var normName in toTry)
                 {
-                    AppendLog($"❌ Skipping {module.Name} — missing dependencies: {string.Join(", ", missing)}");
-                    module.Status = $"Skipped (Missing: {string.Join(", ", missing)})";
-                    skippedCount++;
-                    continue;
-                }
+                    var moduleVm = selectedModules.FirstOrDefault(m => Normalize(m.Name) == normName);
 
-                try
-                {
-                    IsInstalling = true;
-                    AppendLog($"📦 Uploading {module.Name}...");
-                    module.Status = "Installing";
+                    normalizedDeps.TryGetValue(normName, out var depsForThis);
+                    depsForThis ??= Array.Empty<string>();
 
-                    var uploadResp = await _client.UploadModuleAsync(module.LocalPath);
-                    var result = await _client.InstallModuleAsync(uploadResp);
+                    var missing = depsForThis.Where(d => !installed.Contains(d) && !newlyInstalled.Contains(d)).ToList();
+                    if (missing.Any())
+                        continue; // wait until deps satisfied
 
-                    var serverType = result?.Type;
-                    var message = result?.UnifiedMessage ?? result?.Message ?? "(no message)";
+                    // deps OK -> process
+                    progress = true;
+                    processed.Add(normName);
 
-                    if (serverType?.Equals("SUCCESS", StringComparison.OrdinalIgnoreCase) == true)
+                    if (moduleVm == null)
                     {
-                        module.Status = "SUCCESS";
-                        module.InstalledVersion = result?.Module?.Version ?? uploadResp.Version ?? module.LocalVersion;
-                        newlyInstalled.Add(Normalize(uploadResp.Name));
-                        AppendLog($"✅ {module.Name} installed successfully (v{module.InstalledVersion})");
-                        successCount++;
+                        AppendLog($"❌ Skipping {normName} — no local JAR found.");
+                        skippedCount++;
+                        continue;
                     }
-                    else
+
+                    var cleanName = moduleVm.Name.Replace("-", " ").Replace("_", " ").Trim();
+
+                    try
                     {
-                        AppendLog($"🔍 Verifying {module.Name} installation status from server...");
+                        IsInstalling = true;
+                        AppendLog($"📦 Uploading {moduleVm.Name}...");
+                        moduleVm.Status = "Installing";
 
-                        var installedModules = await _client.GetInstalledModulesAsync();
-                        var found = installedModules.FirstOrDefault(m =>
-                            string.Equals(m.Name, uploadResp.Name, StringComparison.OrdinalIgnoreCase) ||
-                            Normalize(m.Name) == Normalize(uploadResp.Name));
+                        var uploadResp = await _client.UploadModuleAsync(moduleVm.LocalPath);
+                        var result = await _client.InstallModuleAsync(uploadResp);
 
-                        if (found != null)
+                        var serverType = result?.Type;
+                        var message = result?.UnifiedMessage ?? result?.Message ?? "(no message)";
+
+                        if (serverType?.Equals("SUCCESS", StringComparison.OrdinalIgnoreCase) == true)
                         {
-                            module.Status = "SUCCESS";
-                            module.InstalledVersion = found.Version ?? uploadResp.Version ?? module.LocalVersion;
+                            moduleVm.Status = "SUCCESS";
+                            moduleVm.InstalledVersion = result?.Module?.Version ?? uploadResp.Version ?? moduleVm.LocalVersion;
                             newlyInstalled.Add(Normalize(uploadResp.Name));
-                            AppendLog($"✅ {module.Name} installed successfully (v{module.InstalledVersion})");
+                            AppendLog($"✅ {cleanName} installed successfully (v{moduleVm.InstalledVersion})");
                             successCount++;
                         }
                         else
                         {
-                            module.Status = "Failed";
+                            AppendLog($"🔍 Verifying {moduleVm.Name} installation status from server...");
 
-                            if (message.Contains("Unsatisfied module requirement", StringComparison.OrdinalIgnoreCase))
-                                AppendLog($"⚠️ Cannot install {module.Name}: dependency not met → {message}");
-                            else if (message.Contains("rollback-only", StringComparison.OrdinalIgnoreCase) ||
-                                     message.Contains("Transaction silently rolled back", StringComparison.OrdinalIgnoreCase))
-                                AppendLog($"⚠️ Server rolled back the transaction for {module.Name}: {message}");
+                            var installedModules = await _client.GetInstalledModulesAsync();
+                            var found = installedModules.FirstOrDefault(m =>
+                                string.Equals(m.Name, uploadResp.Name, StringComparison.OrdinalIgnoreCase) ||
+                                Normalize(m.Name) == Normalize(uploadResp.Name));
+
+                            if (found != null)
+                            {
+                                moduleVm.Status = "SUCCESS";
+                                moduleVm.InstalledVersion = found.Version ?? uploadResp.Version ?? moduleVm.LocalVersion;
+                                newlyInstalled.Add(Normalize(uploadResp.Name));
+                                AppendLog($"✅ {cleanName} installed successfully (v{moduleVm.InstalledVersion})");
+                                successCount++;
+                            }
                             else
-                                AppendLog($"❌ Installation failed for {module.Name}: {message}");
+                            {
+                                moduleVm.Status = "Failed";
 
-                            failedCount++;
+                                if (message.Contains("Unsatisfied module requirement", StringComparison.OrdinalIgnoreCase))
+                                    AppendLog($"⚠️ Cannot install {moduleVm.Name}: dependency not met → {message}");
+                                else if (message.Contains("rollback-only", StringComparison.OrdinalIgnoreCase) ||
+                                         message.Contains("Transaction silently rolled back", StringComparison.OrdinalIgnoreCase))
+                                    AppendLog($"⚠️ Server rolled back the transaction for {moduleVm.Name}: {message}");
+                                else
+                                    AppendLog($"❌ Installation failed for {moduleVm.Name}: {message}");
+
+                                failedCount++;
+                            }
                         }
                     }
+                    catch (Exception ex)
+                    {
+                        moduleVm.Status = "Failed";
+                        AppendLog($"💥 {moduleVm.Name} failed due to unexpected error: {ex.Message}");
+                        failedCount++;
+                    }
+                    finally
+                    {
+                        IsInstalling = false;
+                    }
                 }
-                catch (Exception ex)
-                {
-                    module.Status = "Failed";
-                    AppendLog($"💥 {module.Name} failed due to unexpected error: {ex.Message}");
-                    failedCount++;
-                }
-                finally
-                {
-                    IsInstalling = false;
-                }
+
+                if (!progress) break;
             }
 
-            // Refresh server state one final time and update UI
+            // any remaining pending that couldn't be processed
+            var unprocessed = pending.Except(processed).ToList();
+            foreach (var np in unprocessed)
+            {
+                normalizedDeps.TryGetValue(np, out var deps);
+                deps ??= Array.Empty<string>();
+                var missing = deps.Where(d => !installed.Contains(d) && !newlyInstalled.Contains(d)).ToList();
+                var displayName = selectedModules.FirstOrDefault(m => Normalize(m.Name) == np)?.Name ?? np;
+                if (missing.Any())
+                    AppendLog($"❌ Skipping {displayName} — missing dependencies: {string.Join(", ", missing)}");
+                else
+                    AppendLog($"❌ Skipping {displayName} — could not resolve ordering (possible circular dependency).");
+
+                // count as skipped
+
+            }
+
             await RefreshInstalledVersionsAsync();
 
-            // ⚙️ Installation Summary
             AppendLog("────────────────────────────");
             AppendLog($"📋 Installation Summary:");
             AppendLog($"   ✅ Success: {successCount}");
@@ -542,50 +567,170 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
         {
             IsInstalling = true;
 
+            int successCount = 0, failedCount = 0, skippedCount = 0;
             try
             {
-                // refresh installed list first
-                var installedModules = await _client.GetInstalledModulesAsync();
-                AppendLog($"🔍 Found {installedModules.Count} module(s) on server.");
+                AppendLog("🔄 Fetching currently installed modules from server...");
+                var installedOnServer = await _client.GetInstalledModulesAsync();
+                var installedNormalized = installedOnServer
+                    .Where(m => !string.IsNullOrWhiteSpace(m.Name))
+                    .Select(m => Normalize(m.Name))
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-                foreach (var module in targetModules)
+                AppendLog($"🔍 Found {installedOnServer.Count} module(s) on server.");
+
+                // Safe normalized deps
+                var normalizedDeps = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+                foreach (var kvp in dependencies)
                 {
-                    var remote = installedModules.FirstOrDefault(m =>
-                        string.Equals(m.Name, module.Name, StringComparison.OrdinalIgnoreCase));
+                    var key = Normalize(kvp.Key);
+                    if (string.IsNullOrWhiteSpace(key)) continue;
+                    if (!normalizedDeps.ContainsKey(key))
+                        normalizedDeps[key] = kvp.Value.Select(Normalize)
+                            .Where(v => !string.IsNullOrWhiteSpace(v))
+                            .Distinct(StringComparer.OrdinalIgnoreCase)
+                            .ToArray();
+                }
 
-                    if (remote == null)
+                // Safe local module map
+                var localModuleMap = new Dictionary<string, ModuleViewModel>(StringComparer.OrdinalIgnoreCase);
+                foreach (var m in Modules)
+                {
+                    var key = Normalize(m.Name);
+                    if (string.IsNullOrWhiteSpace(key)) continue;
+                    if (!localModuleMap.ContainsKey(key))
+                        localModuleMap[key] = m;
+                }
+
+                var willBeInstalled = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+                // dependency-aware order for the requested target modules
+                var pending = targetModules.Select(m => Normalize(m.Name)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                var processedThisRun = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+                AppendLog($"🔍 Preparing to update {pending.Count} module(s) (dependency-aware ordering)...");
+
+                bool progress;
+                int safety = 0;
+                do
+                {
+                    progress = false;
+                    safety++;
+
+                    var toTry = pending.Except(processedThisRun).ToList();
+                    foreach (var normName in toTry)
                     {
-                        AppendLog($"⚠️ {module.Name} is not installed on server — installing fresh...");
-                        module.IsSelected = true;
-                        await InstallSelectedAsync();
-                        continue;
+                        localModuleMap.TryGetValue(normName, out var moduleVm);
+
+                        normalizedDeps.TryGetValue(normName, out var depsForThis);
+                        depsForThis ??= Array.Empty<string>();
+
+                        var missingDeps = depsForThis
+                            .Where(d => !installedNormalized.Contains(d) && !willBeInstalled.Contains(d))
+                            .ToList();
+
+                        if (missingDeps.Any())
+                        {
+                            continue;
+                        }
+
+                        progress = true;
+                        processedThisRun.Add(normName);
+
+                        if (moduleVm == null)
+                        {
+                            AppendLog($"❌ Skipping {normName} — no local JAR found for update.");
+                            skippedCount++;
+                            continue;
+                        }
+
+                        var cleanName = moduleVm.Name.Replace("-", " ").Replace("_", " ").Trim();
+
+                        var remote = installedOnServer.FirstOrDefault(m => Normalize(m.Name) == normName);
+
+                        var remoteVersion = remote?.Version ?? "(not installed)";
+                        var localVersion = moduleVm.LocalVersion ?? "(unknown)";
+
+                        if (!string.Equals(remoteVersion, localVersion, StringComparison.OrdinalIgnoreCase))
+                        {
+                            AppendLog($"⬆️ Updating {cleanName} from {remoteVersion} → {localVersion}");
+                            moduleVm.Status = "Installing";
+
+                            try
+                            {
+                                await InstallModuleAsync(moduleVm);
+
+                                if (moduleVm.Status.Equals("SUCCESS", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    successCount++;
+                                    willBeInstalled.Add(normName);
+                                    AppendLog($"✅ {cleanName} updated successfully (v{moduleVm.InstalledVersion})");
+                                }
+                                else
+                                {
+                                    failedCount++;
+                                    AppendLog($"❌ {cleanName} update failed (status: {moduleVm.Status})");
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                failedCount++;
+                                moduleVm.Status = "Failed";
+                                AppendLog($"❌ Update failed for {cleanName}: {ex.Message}");
+                            }
+                        }
+                        else
+                        {
+                            AppendLog($"✅ {cleanName} already up to date (v{remoteVersion}).");
+                            moduleVm.Status = "Up to date";
+                            skippedCount++;
+                            willBeInstalled.Add(normName);
+                        }
                     }
 
-                    if (remote.Version != null && module.LocalVersion != null &&
-                        !string.Equals(remote.Version, module.LocalVersion, StringComparison.OrdinalIgnoreCase))
+                    if (!progress) break;
+                } while (processedThisRun.Count < pending.Count && safety < 50);
+
+                var unprocessed = pending.Except(processedThisRun).ToList();
+                foreach (var np in unprocessed)
+                {
+                    normalizedDeps.TryGetValue(np, out var deps);
+                    deps ??= Array.Empty<string>();
+
+                    var missing = deps.Where(d => !installedNormalized.Contains(d) && !willBeInstalled.Contains(d)).ToList();
+                    var displayName = localModuleMap.ContainsKey(np) ? localModuleMap[np].Name : np;
+
+                    if (missing.Any())
                     {
-                        AppendLog($"⬆️ Updating {module.Name} from {remote.Version} → {module.LocalVersion}");
-                        module.IsSelected = true;
-                        await InstallSelectedAsync();
+                        AppendLog($"❌ Skipping {displayName} — missing dependencies on server: {string.Join(", ", missing)}");
                     }
                     else
                     {
-                        AppendLog($"✅ {module.Name} is up to date (v{remote.Version}).");
+                        AppendLog($"❌ Skipping {displayName} — could not resolve ordering (possible circular dependency).");
                     }
+
+                    skippedCount++;
                 }
 
-                AppendLog("🔁 Module update process completed.");
+                await RefreshInstalledVersionsAsync();
+
+                AppendLog("────────────────────────────");
+                AppendLog("📋 Update Summary:");
+                AppendLog($"   ✅ Success: {successCount}");
+                AppendLog($"   ❌ Failed: {failedCount}");
+                AppendLog($"   ⏭️ Skipped: {skippedCount}");
+                AppendLog($"   📦 Total processed: {targetModules.Count}");
+                AppendLog("────────────────────────────");
             }
             catch (Exception ex)
             {
-                AppendLog($"❌ Update process failed: {ex.Message}");
+                AppendLog($"❌ Update process encountered an error: {ex.Message}");
             }
             finally
             {
                 IsInstalling = false;
             }
         }
-
 
         [RelayCommand]
         private async Task UpdateAllAsync()
@@ -609,13 +754,11 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
             await UpdateModulesAsync(selected);
         }
 
-
         [RelayCommand]
         private void ClearLogs()
         {
             Logs = string.Empty;
         }
-
 
         private async Task InstallModuleAsync(ModuleViewModel module)
         {
@@ -631,7 +774,6 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
                 AppendLog("⚙️ Installing module on server...");
                 var result = await _client.InstallModuleAsync(uploadResp);
 
-                // Normalized message (covers Message, DebugMessage, Error, etc.)
                 var detailedMessage =
                     result?.UnifiedMessage ??
                     result?.Message ??
@@ -657,17 +799,14 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
 
                 if (found != null)
                 {
-                    // ✅ It’s actually installed — false negative from LAMIS
                     module.Status = "SUCCESS";
                     module.InstalledVersion = found.Version ?? module.LocalVersion;
                     AppendLog($"✅ {cleanName} installed successfully after verification (v{module.InstalledVersion})");
                 }
                 else
                 {
-                    // ❌ Real failure
                     module.Status = "Failed";
 
-                    // Check if dependency issue
                     if (detailedMessage.Contains("Unsatisfied module requirement", StringComparison.OrdinalIgnoreCase))
                     {
                         AppendLog($"⚠️ Dependency error: {detailedMessage}");
@@ -689,13 +828,10 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
             }
         }
 
-
         private void AppendLog(string message)
         {
             Logs += $"{DateTime.Now:HH:mm:ss} {message}\n";
         }
-
-
 
         // e.g Extracts "2.1.1" from "patient-2.1.1.jar"
         private string ExtractVersionFromFilename(string path)
