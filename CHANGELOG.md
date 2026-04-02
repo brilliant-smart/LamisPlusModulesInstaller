@@ -1,5 +1,50 @@
 # Changelog
 
+## [3.0.0] - 2026-04-02
+
+### Added
+
+- **Professional application footer with branding**
+  - Copyright notice: "© 2025-2026 Brilliant Smart. All rights reserved."
+  - Contact information with internationally formatted phone number: +234 803 462 5258
+  - "Powered by Brilliant Smart" branding with version display
+  - Professional layout with clean, modern design
+
+- **DPI awareness support**
+  - Added application manifest with PerMonitorV2 DPI awareness mode
+  - Fixes blurry UI on high-DPI displays (4K monitors, high-resolution laptops)
+  - Ensures crisp text and controls on all display configurations
+
+- **Auto-scroll to installing module**
+  - DataGrid automatically scrolls to and highlights the currently installing module
+  - Improves user experience during batch installations by keeping the active module visible
+
+### Improved
+
+- **Build quality**
+  - Resolved all compiler warnings (previously 15 warnings, now 0)
+  - Fixed nullable reference warnings in ModuleViewModel and MainViewModel
+  - Removed System.Windows.Forms reference conflicts
+  - Clean build output ensures production-ready quality
+
+- **Code quality**
+  - Properly initialized all nullable fields with default values
+  - Enhanced JSON deserialization with proper attribute mapping for ModuleInstallResponse
+
+### Technical
+
+- **Version**: Updated from 2.3.2 to 3.0.0
+- **Target Framework**: .NET 8.0 Windows
+- **Build**: Zero warnings, zero errors
+
+### Summary
+
+Version **3.0.0** is a **quality and branding release** that enhances the professional appearance of the application while improving technical quality.  
+The addition of **Brilliant Smart branding**, **DPI awareness**, and **zero-warning builds** makes this the most polished and production-ready version yet.  
+This release demonstrates commitment to **quality, professionalism, and user experience**.
+
+---
+
 ## [1.0.0] - 2025-10-05
 
 ### Added

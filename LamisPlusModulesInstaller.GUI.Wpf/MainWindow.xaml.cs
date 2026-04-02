@@ -16,15 +16,34 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
     /// </summary>
     public partial class MainWindow : Window
     {
+        private MainViewModel _viewModel;
+
         public MainWindow()
         {
             InitializeComponent();
-            DataContext = new MainViewModel();
+            _viewModel = new MainViewModel();
+            DataContext = _viewModel;
 
             LogsTextBox.TextChanged += (s, e) =>
             {
                 LogsTextBox.ScrollToEnd();
             };
+
+            // Subscribe to module installing event to auto-scroll
+            _viewModel.ModuleInstalling += OnModuleInstalling;
+        }
+
+        private void OnModuleInstalling(ModuleViewModel module)
+        {
+            // Scroll to the installing module in the DataGrid
+            Dispatcher.BeginInvoke(new System.Action(() =>
+            {
+                if (module != null)
+                {
+                    ModulesDataGrid.ScrollIntoView(module);
+                    ModulesDataGrid.SelectedItem = module;
+                }
+            }), System.Windows.Threading.DispatcherPriority.Background);
         }
 
         //event handler for check box if module is selected

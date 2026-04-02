@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/lamismodules/**)",
+      "Bash(dotnet build:*)",
+      "Bash(ls -la C:/lamismodules/*.jar)",
+      "Bash(taskkill /F /IM \"LamisPlusModulesInstaller.GUI.Wpf.exe\")"
+    ]
+  }
+}

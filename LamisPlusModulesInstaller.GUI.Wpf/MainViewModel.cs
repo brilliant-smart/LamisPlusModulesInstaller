@@ -19,8 +19,9 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
 
         [ObservableProperty] private string baseUrl = "http://localhost:8383";
         [ObservableProperty] private string username = "guest@lamisplus.org";
-        [ObservableProperty] private string password;
-        [ObservableProperty] private string authStatus = "Not logged in";
+        [ObservableProperty] private string password = string.Empty;
+        [ObservableProperty] private string authStatus = "🔘 Not logged in";
+        [ObservableProperty] private string authStatusColor = "Gray";
         [ObservableProperty] private string logs = "";
         [ObservableProperty] private bool isAuthenticated = false;
         [ObservableProperty] private bool isInstalling = false;
@@ -33,6 +34,9 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
 
 
         public ObservableCollection<ModuleViewModel> Modules { get; } = new();
+
+        // Event to notify when a module status changes to Installing
+        public event Action<ModuleViewModel>? ModuleInstalling;
 
         // Dependency map to enforce installation in dependency aware order
         private readonly Dictionary<string, string[]> dependencies =
@@ -56,12 +60,15 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
                 { "MHPSS", new []{ "Patient" } },
                 { "KP_Prev", Array.Empty<string>() },
                 { "Backup", Array.Empty<string>() },
+                { "Sync", Array.Empty<string>() },
+                { "DQR", Array.Empty<string>() },
                 { "Client-sync", Array.Empty<string>() }
             };
 
         public MainViewModel()
         {
             _client = new ModuleClient(BaseUrl, "");
+            password = string.Empty; // Initialize to satisfy nullable warning
 
             EnsureModulesFolderExists(); //Method that checks if default modules folder exists else create it
         }
@@ -72,6 +79,12 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
         private static string Normalize(string s)
         {
             if (string.IsNullOrWhiteSpace(s)) return string.Empty;
+
+            // 0. Strip leading number prefix (e.g., "19 - " from "19 - sync-2.1.0.jar")
+            // Find first letter and take substring from there
+            var firstLetterIndex = s.IndexOfAny("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".ToCharArray());
+            if (firstLetterIndex > 0)
+                s = s.Substring(firstLetterIndex);
 
             // 1. Lowercase, trim
             s = s.Trim().ToLowerInvariant();
@@ -92,8 +105,19 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
             if (string.IsNullOrWhiteSpace(cleaned))
                 cleaned = s.Replace(" ", "").Replace("-", "").Replace("_", "");
 
-            // 5. Trim trailing digits that represent jar suffixes (optional)
-            cleaned = new string(cleaned.TakeWhile(c => !char.IsDigit(c)).ToArray());
+            // 5. Trim trailing digits that represent version numbers (e.g., "sync210" -> "sync")
+            // Find last non-digit and trim everything after it
+            int lastNonDigit = -1;
+            for (int i = cleaned.Length - 1; i >= 0; i--)
+            {
+                if (!char.IsDigit(cleaned[i]))
+                {
+                    lastNonDigit = i;
+                    break;
+                }
+            }
+            if (lastNonDigit >= 0)
+                cleaned = cleaned.Substring(0, lastNonDigit + 1);
 
             return string.IsNullOrWhiteSpace(cleaned) ? s : cleaned;
 
@@ -193,6 +217,15 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
                         .OrderBy(m =>
                         {
                             var normalized = Normalize(m.Name);
+
+                            // First try exact match (e.g., "sync" vs "Sync", "clientsync" vs "Client-sync")
+                            var exactKey = dependencies.Keys
+                                .FirstOrDefault(k => normalized.Equals(Normalize(k), StringComparison.OrdinalIgnoreCase));
+
+                            if (exactKey != null)
+                                return dependencies.Keys.ToList().IndexOf(exactKey);
+
+                            // Fall back to contains match for other cases
                             var key = dependencies.Keys
                                 .FirstOrDefault(k => normalized.Contains(Normalize(k), StringComparison.OrdinalIgnoreCase));
 
@@ -229,29 +262,60 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
 
                 if (string.IsNullOrWhiteSpace(token))
                 {
-                    throw new Exception("Invalid Username or Password.");
+                    throw new Exception("Invalid credentials");
                 }
 
                 _client = new ModuleClient(BaseUrl, token);
 
-                AuthStatus = "✅ Authenticated";
+                AuthStatus = "🟢 Logged in";
+                AuthStatusColor = "#22C55E"; // Green
                 IsAuthenticated = true;
-                AppendLog("Login successful.");
+                AppendLog("✅ Login successful.");
 
                 EnsureModulesFolderExists();
                 await RefreshInstalledVersionsAsync();
             }
+            catch (HttpRequestException ex) when (ex.InnerException is System.Net.Sockets.SocketException)
+            {
+                // Connection refused - LamisPlus is not running
+                AuthStatus = "🔴 LamisPlus not running";
+                AuthStatusColor = "#EF4444"; // Red
+                IsAuthenticated = false;
+                AppendLog("❌ LamisPlus is not running. Kindly start LamisPlus first.");
+            }
+            catch (HttpRequestException ex) when (ex.Message.Contains("401") || ex.Message.Contains("Unauthorized"))
+            {
+                // Wrong username/password
+                AuthStatus = "🔴 Wrong username/password";
+                AuthStatusColor = "#EF4444"; // Red
+                IsAuthenticated = false;
+                AppendLog("❌ Login failed: Wrong username or password.");
+            }
             catch (HttpRequestException ex)
             {
-                AuthStatus = "❌ Authentication failed — invalid credentials or server unreachable.";
+                // Other HTTP errors
+                AuthStatus = "🔴 Connection failed";
+                AuthStatusColor = "#EF4444"; // Red
                 IsAuthenticated = false;
-                AppendLog($"Login failed: {ex.Message}");
+                AppendLog($"❌ Login failed: {ex.Message}");
             }
             catch (Exception ex)
             {
-                AuthStatus = $"❌ Login failed: {ex.Message}";
-                IsAuthenticated = false;
-                AppendLog(AuthStatus);
+                // Other errors (including "Invalid credentials" from empty token)
+                if (ex.Message.Contains("Invalid credentials"))
+                {
+                    AuthStatus = "🔴 Wrong username/password";
+                    AuthStatusColor = "#EF4444"; // Red
+                    IsAuthenticated = false;
+                    AppendLog("❌ Login failed: Wrong username or password.");
+                }
+                else
+                {
+                    AuthStatus = "🔴 Login failed";
+                    AuthStatusColor = "#EF4444"; // Red
+                    IsAuthenticated = false;
+                    AppendLog($"❌ Login failed: {ex.Message}");
+                }
             }
         }
 
@@ -319,11 +383,17 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
         private async Task InstallAllAsync()
         {
             IsInstalling = true;
+            var successCount = 0;
+            var failedCount = 0;
+            var skippedCount = 0;
+
             try
             {
                 var installed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 TotalModules = dependencies.Count;
                 CompletedModules = 0;
+
+                AppendLog($"📦 Starting installation of {TotalModules} modules...");
 
                 foreach (var kvp in dependencies)
                 {
@@ -338,8 +408,9 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
                     if (!normalizedDeps.All(d => installed.Contains(d)))
                     {
                         AppendLog($"⏩ Skipping {moduleKeyRaw}, dependencies not satisfied: {string.Join(", ", kvp.Value)}");
+                        skippedCount++;
                         CompletedModules++;
-                        UpdateProgress();
+                        UpdateProgress(operation: "Install All");
                         continue;
                     }
 
@@ -349,30 +420,48 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
                     if (module == null)
                     {
                         AppendLog($"❌ No local JAR found for {moduleKeyRaw}");
+                        skippedCount++;
                         CompletedModules++;
-                        UpdateProgress();
+                        UpdateProgress(operation: "Install All");
                         continue;
                     }
 
                     await InstallModuleAsync(module);
 
                     if (module.Status.Equals("SUCCESS", StringComparison.OrdinalIgnoreCase))
+                    {
                         installed.Add(moduleKey);
+                        successCount++;
+                    }
+                    else if (module.Status.Equals("Failed", StringComparison.OrdinalIgnoreCase) || 
+                             module.Status.Equals("ERROR", StringComparison.OrdinalIgnoreCase))
+                    {
+                        failedCount++;
+                    }
 
                     CompletedModules++;
-                    UpdateProgress();
+                    UpdateProgress(operation: "Install All");
                 }
 
                 await RefreshInstalledVersionsAsync();
+
+                AppendLog("────────────────────────────");
+                AppendLog($"📋 Installation Summary:");
+                AppendLog($"   ✅ Success: {successCount}");
+                AppendLog($"   ❌ Failed: {failedCount}");
+                AppendLog($"   ⏭️ Skipped: {skippedCount}");
+                AppendLog($"   📦 Total processed: {TotalModules}");
+                AppendLog("────────────────────────────");
+                AppendLog("🔁 Install All completed.");
             }
             finally
             {
                 IsInstalling = false;
-                UpdateProgress(true);
+                UpdateProgress(operation: "Install All", finished: true);
             }
         }
 
-        private void UpdateProgress(bool finished = false)
+        private void UpdateProgress(string operation = "Processing", bool finished = false)
         {
             if (TotalModules == 0)
             {
@@ -384,12 +473,12 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
             if (finished)
             {
                 InstallProgress = 100;
-                ProgressText = $"({CompletedModules}/{TotalModules}) Modules installed successfully";
+                ProgressText = $"✅ {operation} completed: {CompletedModules}/{TotalModules} modules";
             }
             else
             {
                 InstallProgress = (int)((double)CompletedModules / TotalModules * 100);
-                ProgressText = $"Installing {CompletedModules}/{TotalModules} ({InstallProgress}%)";
+                ProgressText = $"{operation}: {CompletedModules}/{TotalModules} ({InstallProgress}%)";
             }
         }
 
@@ -406,6 +495,11 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
                 AppendLog("⚠️ No modules selected for installation.");
                 return;
             }
+
+            IsInstalling = true;
+            TotalModules = selectedModules.Count;
+            CompletedModules = 0;
+            UpdateProgress();
 
             AppendLog($"🧩 Starting installation for {selectedModules.Count} selected module(s)...");
 
@@ -461,6 +555,8 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
                     {
                         AppendLog($"❌ Skipping {normName} — no local JAR found.");
                         skippedCount++;
+                        CompletedModules++;
+                        UpdateProgress();
                         continue;
                     }
 
@@ -527,7 +623,8 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
                     }
                     finally
                     {
-                        IsInstalling = false;
+                        CompletedModules++;
+                        UpdateProgress();
                     }
                 }
 
@@ -547,7 +644,7 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
                 else
                     AppendLog($"❌ Skipping {displayName} — could not resolve ordering (possible circular dependency).");
 
-                // count as skipped
+                skippedCount++;
 
             }
 
@@ -561,11 +658,17 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
             AppendLog($"   📦 Total processed: {selectedModules.Count}");
             AppendLog("────────────────────────────");
             AppendLog("🔁 Selected modules installation completed.");
+            
+            IsInstalling = false;
+            UpdateProgress(operation: "Install Selected", finished: true);
         }
 
         private async Task UpdateModulesAsync(List<ModuleViewModel> targetModules)
         {
             IsInstalling = true;
+            TotalModules = targetModules.Count;
+            CompletedModules = 0;
+            UpdateProgress(operation: "Update");
 
             int successCount = 0, failedCount = 0, skippedCount = 0;
             try
@@ -641,6 +744,8 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
                         {
                             AppendLog($"❌ Skipping {normName} — no local JAR found for update.");
                             skippedCount++;
+                            CompletedModules++;
+                            UpdateProgress(operation: "Update");
                             continue;
                         }
 
@@ -678,6 +783,11 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
                                 moduleVm.Status = "Failed";
                                 AppendLog($"❌ Update failed for {cleanName}: {ex.Message}");
                             }
+                            finally
+                            {
+                                CompletedModules++;
+                                UpdateProgress(operation: "Update");
+                            }
                         }
                         else
                         {
@@ -685,6 +795,8 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
                             moduleVm.Status = "Up to date";
                             skippedCount++;
                             willBeInstalled.Add(normName);
+                            CompletedModules++;
+                            UpdateProgress(operation: "Update");
                         }
                     }
 
@@ -729,6 +841,7 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
             finally
             {
                 IsInstalling = false;
+                UpdateProgress(operation: "Update", finished: true);
             }
         }
 
@@ -767,6 +880,11 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
                 var cleanName = module.Name.Replace("-", " ").Replace("_", " ").Trim();
 
                 AppendLog($"🧩 Preparing to install: {cleanName} (v{module.LocalVersion})");
+                module.Status = "Installing";
+                
+                // Notify UI to scroll to this module
+                ModuleInstalling?.Invoke(module);
+                
                 AppendLog("📤 Uploading module to server...");
 
                 var uploadResp = await _client.UploadModuleAsync(module.LocalPath);
