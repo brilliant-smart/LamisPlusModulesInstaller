@@ -49,7 +49,7 @@ namespace LamisPlusModulesInstaller
 
     public class Permission
     {
-        public string? Id { get; set; }
+        public int? Id { get; set; }  // Changed from string to int to match server response
         public string Name { get; set; } = string.Empty;
         public string Description { get; set; } = string.Empty;
         public string ModuleName { get; set; } = string.Empty;

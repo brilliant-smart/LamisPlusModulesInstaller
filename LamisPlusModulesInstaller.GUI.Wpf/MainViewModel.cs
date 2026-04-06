@@ -32,6 +32,8 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
         [ObservableProperty] private int installProgress = 0;
         [ObservableProperty] private string progressText = "";
 
+        // Dynamic current year for copyright footer
+        public string CurrentYear => DateTime.Now.Year.ToString();
 
         public ObservableCollection<ModuleViewModel> Modules { get; } = new();
 
@@ -393,6 +395,27 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
                 TotalModules = dependencies.Count;
                 CompletedModules = 0;
 
+                // Preload already-installed modules from server
+                try
+                {
+                    AppendLog("🔍 Checking which modules are already installed on server...");
+                    var serverInstalled = await _client.GetInstalledModulesAsync();
+                    foreach (var m in serverInstalled)
+                    {
+                        if (!string.IsNullOrWhiteSpace(m.Name))
+                        {
+                            var normalized = Normalize(m.Name);
+                            installed.Add(normalized);
+                            AppendLog($"   ✓ {m.Name} already installed (v{m.Version ?? "unknown"})");
+                        }
+                    }
+                    AppendLog($"📋 Found {installed.Count} modules already installed");
+                }
+                catch (Exception ex)
+                {
+                    AppendLog($"⚠️ Could not preload installed modules: {ex.Message}");
+                }
+
                 AppendLog($"📦 Starting installation of {TotalModules} modules...");
 
                 foreach (var kvp in dependencies)
@@ -404,10 +427,21 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
                     // normalize deps
                     var normalizedDeps = deps.Select(Normalize).ToArray();
 
+                    // Check if already installed - skip installation
+                    if (installed.Contains(moduleKey))
+                    {
+                        AppendLog($"✓ {moduleKeyRaw} already installed - skipping");
+                        skippedCount++;
+                        CompletedModules++;
+                        UpdateProgress(operation: "Install All");
+                        continue;
+                    }
+
                     // Skip if dependencies not ready
                     if (!normalizedDeps.All(d => installed.Contains(d)))
                     {
-                        AppendLog($"⏩ Skipping {moduleKeyRaw}, dependencies not satisfied: {string.Join(", ", kvp.Value)}");
+                        var missingDeps = normalizedDeps.Where(d => !installed.Contains(d)).ToList();
+                        AppendLog($"⏩ Skipping {moduleKeyRaw}, missing dependencies: {string.Join(", ", missingDeps)}");
                         skippedCount++;
                         CompletedModules++;
                         UpdateProgress(operation: "Install All");
@@ -415,7 +449,12 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
                     }
 
                     // find local module by normalized name
-                    var module = Modules.FirstOrDefault(m => Normalize(m.Name).Contains(moduleKey, StringComparison.OrdinalIgnoreCase));
+                    var module = Modules.FirstOrDefault(m => 
+                    {
+                        var normalizedModuleName = Normalize(m.Name);
+                        return normalizedModuleName == moduleKey || 
+                               normalizedModuleName.Contains(moduleKey, StringComparison.OrdinalIgnoreCase);
+                    });
 
                     if (module == null)
                     {
@@ -756,45 +795,35 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
                         var remoteVersion = remote?.Version ?? "(not installed)";
                         var localVersion = moduleVm.LocalVersion ?? "(unknown)";
 
-                        if (!string.Equals(remoteVersion, localVersion, StringComparison.OrdinalIgnoreCase))
+                        // Update always processes modules, even if versions match (allows force-reinstall for crashed modules)
+                        AppendLog($"⬆️ Updating {cleanName} from {remoteVersion} → {localVersion}");
+                        moduleVm.Status = "Installing";
+
+                        try
                         {
-                            AppendLog($"⬆️ Updating {cleanName} from {remoteVersion} → {localVersion}");
-                            moduleVm.Status = "Installing";
+                            // Always use the update endpoint for force-reinstall capability
+                            await InstallModuleAsync(moduleVm, isUpdate: true);
 
-                            try
+                            if (moduleVm.Status.Equals("SUCCESS", StringComparison.OrdinalIgnoreCase))
                             {
-                                await InstallModuleAsync(moduleVm);
-
-                                if (moduleVm.Status.Equals("SUCCESS", StringComparison.OrdinalIgnoreCase))
-                                {
-                                    successCount++;
-                                    willBeInstalled.Add(normName);
-                                    AppendLog($"✅ {cleanName} updated successfully (v{moduleVm.InstalledVersion})");
-                                }
-                                else
-                                {
-                                    failedCount++;
-                                    AppendLog($"❌ {cleanName} update failed (status: {moduleVm.Status})");
-                                }
+                                successCount++;
+                                willBeInstalled.Add(normName);
+                                AppendLog($"✅ {cleanName} updated successfully (v{moduleVm.InstalledVersion})");
                             }
-                            catch (Exception ex)
+                            else
                             {
                                 failedCount++;
-                                moduleVm.Status = "Failed";
-                                AppendLog($"❌ Update failed for {cleanName}: {ex.Message}");
-                            }
-                            finally
-                            {
-                                CompletedModules++;
-                                UpdateProgress(operation: "Update");
+                                AppendLog($"❌ {cleanName} update failed (status: {moduleVm.Status})");
                             }
                         }
-                        else
+                        catch (Exception ex)
                         {
-                            AppendLog($"✅ {cleanName} already up to date (v{remoteVersion}).");
-                            moduleVm.Status = "Up to date";
-                            skippedCount++;
-                            willBeInstalled.Add(normName);
+                            failedCount++;
+                            moduleVm.Status = "Failed";
+                            AppendLog($"❌ Update failed for {cleanName}: {ex.Message}");
+                        }
+                        finally
+                        {
                             CompletedModules++;
                             UpdateProgress(operation: "Update");
                         }
@@ -873,13 +902,54 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
             Logs = string.Empty;
         }
 
-        private async Task InstallModuleAsync(ModuleViewModel module)
+        [RelayCommand]
+        private async Task RestartLamisAsync()
+        {
+            try
+            {
+                AppendLog("🔄 Initiating LAMISPlus restart...");
+                var (success, message) = await _client.RestartLamisAsync();
+                
+                if (success)
+                {
+                    AppendLog($"✅ {message}");
+                    AppendLog("⚠️ Please wait for LAMISPlus to restart. This may take 1-2 minutes.");
+                    AppendLog("💡 Opening LAMISPlus in browser...");
+                    
+                    // Open LAMISPlus in default browser
+                    try
+                    {
+                        var url = BaseUrl.TrimEnd('/');
+                        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                        {
+                            FileName = url,
+                            UseShellExecute = true
+                        });
+                        AppendLog($"🌐 Browser launched: {url}");
+                    }
+                    catch (Exception browserEx)
+                    {
+                        AppendLog($"⚠️ Could not open browser automatically: {browserEx.Message}");
+                    }
+                }
+                else
+                {
+                    AppendLog($"❌ {message}");
+                }
+            }
+            catch (Exception ex)
+            {
+                AppendLog($"❌ Error restarting LAMISPlus: {ex.Message}");
+            }
+        }
+
+        private async Task InstallModuleAsync(ModuleViewModel module, bool isUpdate = false)
         {
             try
             {
                 var cleanName = module.Name.Replace("-", " ").Replace("_", " ").Trim();
 
-                AppendLog($"🧩 Preparing to install: {cleanName} (v{module.LocalVersion})");
+                AppendLog($"🧩 Preparing to {(isUpdate ? "update" : "install")}: {cleanName} (v{module.LocalVersion})");
                 module.Status = "Installing";
                 
                 // Notify UI to scroll to this module
@@ -889,8 +959,8 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
 
                 var uploadResp = await _client.UploadModuleAsync(module.LocalPath);
 
-                AppendLog("⚙️ Installing module on server...");
-                var result = await _client.InstallModuleAsync(uploadResp);
+                AppendLog($"⚙️ {(isUpdate ? "Updating" : "Installing")} module on server...");
+                var result = await _client.InstallModuleAsync(uploadResp, isUpdate);
 
                 var detailedMessage =
                     result?.UnifiedMessage ??
@@ -902,10 +972,23 @@ namespace LamisPlusModulesInstaller.GUI.Wpf
                 // --- CASE 1: Explicit SUCCESS ---
                 if (result?.Type?.Equals("SUCCESS", StringComparison.OrdinalIgnoreCase) == true)
                 {
-                    module.Status = "SUCCESS";
-                    module.InstalledVersion = result.Module?.Version ?? module.LocalVersion;
-                    AppendLog($"✅ Installation complete: {cleanName} (v{module.InstalledVersion})");
-                    return;
+                    // Wait for module to be fully registered on server
+                    var serverName = uploadResp.Name ?? module.Name;
+                    AppendLog($"⏳ Waiting for {cleanName} to be fully registered (timeout 60s)...");
+                    var registered = await _client.WaitForModuleRegisteredAsync(serverName, 60);
+                    
+                    if (registered)
+                    {
+                        module.Status = "SUCCESS";
+                        module.InstalledVersion = result.Module?.Version ?? module.LocalVersion;
+                        AppendLog($"✅ Installation complete: {cleanName} (v{module.InstalledVersion})");
+                        return;
+                    }
+                    else
+                    {
+                        AppendLog($"⚠️ {cleanName} reported success but did not appear in registered modules within timeout");
+                        // Fall through to verification
+                    }
                 }
 
                 // --- CASE 2: Possible false negative or dependency issue ---

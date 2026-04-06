@@ -1,5 +1,51 @@
 # Changelog
 
+## [3.1.0] - 2026-04-06
+
+### Added
+
+- **Restart LAMISPlus functionality**
+  - New "🔄 Restart LAMISPlus" button integrated into the toolbar between "Update Selected" and "Clear Logs"
+  - Automatically opens LAMISPlus in the default browser after successful restart
+  - Positioned strategically for easy access after module installations/updates
+  - Calls the `/restart` endpoint to gracefully restart the LAMISPlus server
+
+- **Enhanced install/update reliability**
+  - Pre-loads already-installed modules from server before Install All operation
+  - Prevents unnecessary reinstallation attempts that could cause failures
+  - Added 60-second registration wait after successful module installation to ensure server fully registers modules
+  - Skips already-installed modules intelligently during Install All workflow
+
+### Fixed
+
+- **Critical JSON deserialization bug**
+  - Changed `Permission.Id` from `string?` to `int?` to match LAMISPlus server response format
+  - Fixed "The JSON value could not be converted to System.String" error during module upload
+  - Resolved cascade failures where Patient, ADR, Backup, DQR and other modules failed to install
+  - This was causing 14+ modules to be skipped due to missing dependencies
+
+- **Dependency tracking improvements**
+  - Better logging showing exactly which dependencies are missing when modules are skipped
+  - Clear messages differentiating between already-installed modules and skipped modules
+  - Improved HashSet tracking for installed modules to prevent false negatives
+
+### Improved
+
+- **User experience**
+  - Restart button automatically launches LAMISPlus login page in browser (matches native restart behavior)
+  - More informative log messages during Install All showing pre-installed modules
+  - Better visual consistency with restart button matching other toolbar buttons
+
+- **Code consistency**
+  - Aligned GUI `InstallModuleAsync` behavior with console app `Program.cs` by adding registration wait
+  - Improved error messages and logging throughout the installation process
+
+### Summary
+
+Version **3.1.0** is a **critical stability and usability release** that fixes a major JSON deserialization bug preventing module installations, adds convenient LAMISPlus restart functionality, and significantly improves installation reliability by pre-checking installed modules and waiting for proper registration. This release resolves the cascade failure issue where Patient module failure caused 14+ dependent modules to skip installation.
+
+---
+
 ## [3.0.0] - 2026-04-02
 
 ### Added

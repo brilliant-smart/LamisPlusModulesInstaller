@@ -50,9 +50,9 @@ namespace LamisPlusModulesInstaller
                    ?? throw new Exception("Failed to parse upload response");
         }
 
-        public async Task<ModuleInstallResponse?> InstallModuleAsync(ModuleUploadResponse uploaded)
+        public async Task<ModuleInstallResponse?> InstallModuleAsync(ModuleUploadResponse uploaded, bool isUpdate = false)
         {
-            var url = "/api/v1/modules/install?install=true";
+            var url = isUpdate ? "/api/v1/modules/update" : "/api/v1/modules/install?install=true";
 
             var payload = new
             {
@@ -164,20 +164,30 @@ namespace LamisPlusModulesInstaller
 
                 if (!resp.IsSuccessStatusCode)
                 {
-                    Console.WriteLine($"[GET INSTALLED ERROR] {resp.StatusCode}: {body}");
+                    Console.WriteLine($"[ERROR] GET {url} failed: {resp.StatusCode}");
+                    Console.WriteLine($"[DEBUG] Response body: {body}");
                     return new List<ModuleUploadResponse>();
                 }
 
                 try
                 {
+                    Console.WriteLine($"[DEBUG] GET {url} returned: {body}");
+                    
                     var result = JsonSerializer.Deserialize<List<ModuleUploadResponse>>(body, _jsonOptions);
                     if (result != null && result.Any())
-                        Console.WriteLine($"[GET INSTALLED OK] Fetched {result.Count} modules from {url}");
+                    {
+                        Console.WriteLine($"[SUCCESS] Fetched {result.Count} modules");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"[WARNING] API returned empty list - modules may not be loaded in runtime");
+                    }
                     return result ?? new List<ModuleUploadResponse>();
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[DESERIALIZE ERROR] {ex.Message}\nBody:\n{body}");
+                    Console.WriteLine($"[ERROR] Failed to parse response: {ex.Message}");
+                    Console.WriteLine($"[DEBUG] Raw body: {body}");
                     return new List<ModuleUploadResponse>();
                 }
             }
@@ -240,6 +250,32 @@ namespace LamisPlusModulesInstaller
             }
 
             return false;
+        }
+
+        public async Task<(bool Success, string Message)> RestartLamisAsync()
+        {
+            try
+            {
+                // LAMISPlus restart endpoint is at /restart (GET method)
+                var resp = await _http.GetAsync("/restart");
+                var body = await resp.Content.ReadAsStringAsync();
+
+                if (resp.IsSuccessStatusCode)
+                {
+                    Console.WriteLine($"[RESTART OK] LAMISPlus restart initiated");
+                    return (true, "LAMISPlus restart initiated successfully");
+                }
+                else
+                {
+                    Console.WriteLine($"[RESTART ERROR] {resp.StatusCode}: {body}");
+                    return (false, $"Restart failed: {resp.StatusCode}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[RESTART EXCEPTION] {ex.Message}");
+                return (false, $"Restart error: {ex.Message}");
+            }
         }
 
     }
