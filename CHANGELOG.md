@@ -1,96 +1,5 @@
 # Changelog
 
-## [3.1.0] - 2026-04-06
-
-### Added
-
-- **Restart LAMISPlus functionality**
-  - New "🔄 Restart LAMISPlus" button integrated into the toolbar between "Update Selected" and "Clear Logs"
-  - Automatically opens LAMISPlus in the default browser after successful restart
-  - Positioned strategically for easy access after module installations/updates
-  - Calls the `/restart` endpoint to gracefully restart the LAMISPlus server
-
-- **Enhanced install/update reliability**
-  - Pre-loads already-installed modules from server before Install All operation
-  - Prevents unnecessary reinstallation attempts that could cause failures
-  - Added 60-second registration wait after successful module installation to ensure server fully registers modules
-  - Skips already-installed modules intelligently during Install All workflow
-
-### Fixed
-
-- **Critical JSON deserialization bug**
-  - Changed `Permission.Id` from `string?` to `int?` to match LAMISPlus server response format
-  - Fixed "The JSON value could not be converted to System.String" error during module upload
-  - Resolved cascade failures where Patient, ADR, Backup, DQR and other modules failed to install
-  - This was causing 14+ modules to be skipped due to missing dependencies
-
-- **Dependency tracking improvements**
-  - Better logging showing exactly which dependencies are missing when modules are skipped
-  - Clear messages differentiating between already-installed modules and skipped modules
-  - Improved HashSet tracking for installed modules to prevent false negatives
-
-### Improved
-
-- **User experience**
-  - Restart button automatically launches LAMISPlus login page in browser (matches native restart behavior)
-  - More informative log messages during Install All showing pre-installed modules
-  - Better visual consistency with restart button matching other toolbar buttons
-
-- **Code consistency**
-  - Aligned GUI `InstallModuleAsync` behavior with console app `Program.cs` by adding registration wait
-  - Improved error messages and logging throughout the installation process
-
-### Summary
-
-Version **3.1.0** is a **critical stability and usability release** that fixes a major JSON deserialization bug preventing module installations, adds convenient LAMISPlus restart functionality, and significantly improves installation reliability by pre-checking installed modules and waiting for proper registration. This release resolves the cascade failure issue where Patient module failure caused 14+ dependent modules to skip installation.
-
----
-
-## [3.0.0] - 2026-04-02
-
-### Added
-
-- **Professional application footer with branding**
-  - Copyright notice: "© 2025-2026 Brilliant Smart. All rights reserved."
-  - Contact information with internationally formatted phone number: +234 803 462 5258
-  - "Powered by Brilliant Smart" branding with version display
-  - Professional layout with clean, modern design
-
-- **DPI awareness support**
-  - Added application manifest with PerMonitorV2 DPI awareness mode
-  - Fixes blurry UI on high-DPI displays (4K monitors, high-resolution laptops)
-  - Ensures crisp text and controls on all display configurations
-
-- **Auto-scroll to installing module**
-  - DataGrid automatically scrolls to and highlights the currently installing module
-  - Improves user experience during batch installations by keeping the active module visible
-
-### Improved
-
-- **Build quality**
-  - Resolved all compiler warnings (previously 15 warnings, now 0)
-  - Fixed nullable reference warnings in ModuleViewModel and MainViewModel
-  - Removed System.Windows.Forms reference conflicts
-  - Clean build output ensures production-ready quality
-
-- **Code quality**
-  - Properly initialized all nullable fields with default values
-  - Enhanced JSON deserialization with proper attribute mapping for ModuleInstallResponse
-
-### Technical
-
-- **Version**: Updated from 2.3.2 to 3.0.0
-- **Target Framework**: .NET 8.0 Windows
-- **Build**: Zero warnings, zero errors
-
-### Summary
-
-Version **3.0.0** is a **quality and branding release** that enhances the professional appearance of the application while improving technical quality.  
-The addition of **Brilliant Smart branding**, **DPI awareness**, and **zero-warning builds** makes this the most polished and production-ready version yet.  
-This release demonstrates commitment to **quality, professionalism, and user experience**.
-
----
-
 ## [1.0.0] - 2025-10-05
 
 ### Added
@@ -261,3 +170,82 @@ This release brings the most comprehensive and user-friendly experience yet, clo
 Version **2.3.2** completes the update feature introduced in v2.3.1.  
 Users can now **update all modules or selected modules confidently**, with clear feedback, safe failure handling, and a transparent audit trail.  
 This release focuses on **reliability, recoverability, and operational clarity** rather than UI changes.
+
+---
+## [3.0.0] - 2026-04-02
+
+### Added
+
+- **DPI awareness support**
+  - Added application manifest with PerMonitorV2 DPI awareness mode
+  - Fixes blurry UI on high-DPI displays (4K monitors, high-resolution laptops)
+  - Ensures crisp text and controls on all display configurations
+
+- **Auto-scroll to installing module**
+  - DataGrid automatically scrolls to and highlights the currently installing module
+  - Improves user experience during batch installations by keeping the active module visible
+
+### Improved
+
+- **Build quality**
+  - Resolved all compiler warnings (previously 15 warnings, now 0)
+  - Fixed nullable reference warnings in ModuleViewModel and MainViewModel
+  - Removed System.Windows.Forms reference conflicts
+  - Clean build output ensures production-ready quality
+
+- **Code quality**
+  - Properly initialized all nullable fields with default values
+  - Enhanced JSON deserialization with proper attribute mapping for ModuleInstallResponse
+
+### Summary
+
+Version **3.0.0** is a **quality and branding release** that enhances the professional appearance of the application while improving technical quality.  
+The **zero-warning builds** makes this the most polished and production-ready version yet.  
+This release demonstrates commitment to **quality, professionalism, and user experience**.
+
+---
+
+
+## [3.1.0] - 2026-04-06
+
+### Added
+
+- **Restart LAMISPlus functionality**
+  - New "🔄 Restart LAMISPlus" button integrated into the toolbar between "Update Selected" and "Clear Logs"
+  - Automatically opens LAMISPlus in the default browser after successful restart
+  - Positioned strategically for easy access after module installations/updates
+
+- **Enhanced install/update reliability**
+  - Pre-loads already-installed modules from server before Install All operation
+  - Prevents unnecessary reinstallation attempts that could cause failures
+  - Added 60-second registration wait after successful module installation to ensure server fully registers modules
+  - Skips already-installed modules intelligently during Install All workflow
+
+### Fixed
+
+- **Critical JSON deserialization bug**
+  - Changed `Permission.Id` from `string?` to `int?` to match LAMISPlus server response format
+  - Fixed "The JSON value could not be converted to System.String" error during module upload
+  - Resolved cascade failures where Patient, ADR, Backup, DQR and other modules failed to install
+  - This was causing 14+ modules to be skipped due to missing dependencies
+
+- **Dependency tracking improvements**
+  - Better logging showing exactly which dependencies are missing when modules are skipped
+  - Clear messages differentiating between already-installed modules and skipped modules
+  - Improved HashSet tracking for installed modules to prevent false negatives
+
+### Improved
+
+- **User experience**
+  - Restart button automatically launches LAMISPlus login page in browser (matches native restart behavior)
+  - More informative log messages during Install All showing pre-installed modules
+
+- **Code consistency**
+  - Aligned GUI `InstallModuleAsync` behavior with console app `Program.cs` by adding registration wait
+  - Improved error messages and logging throughout the installation process
+
+### Summary
+
+Version **3.1.0** is a **critical stability and usability release** that fixes a major JSON deserialization bug preventing module installations, adds convenient LAMISPlus restart functionality, and significantly improves installation reliability by pre-checking installed modules and waiting for proper registration. This release resolves the cascade failure issue where Patient module failure caused 14+ dependent modules to skip installation.
+
+---
